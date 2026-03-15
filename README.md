@@ -1,168 +1,110 @@
-# AttendX - Attendance System
+# smart-attendance-system
+
+A face recognition + BLE based attendance system built with Flutter and FastAPI.
+
+## Features
+- Role-based access: Admin, HOD, Principal, Faculty, Student
+- BLE-based presence detection (faculty broadcasts, students scan)
+- Face recognition + liveness detection (blink) — coming soon
+- Admin approval workflow for new registrations
+- Timetable management
+- Real-time attendance tracking
+- Department and subject management
+
+## Tech Stack
+| Layer | Technology |
+|---|---|
+| Mobile App | Flutter (Dart) |
+| BLE Broadcasting | flutter_ble_peripheral |
+| BLE Scanning | flutter_blue_plus |
+| Backend | FastAPI (Python) |
+| Database | SQLite (dev) → PostgreSQL (prod) |
+| Auth | JWT + Refresh Tokens |
+| Face Recognition | MediaPipe + InsightFace (coming soon) |
 
 ## Project Structure
 ```
 attendance_system/
 ├── server/
-│   ├── main.py          ← FastAPI server
+│   ├── main.py           ← FastAPI server
 │   ├── requirements.txt
-│   └── attendance.db    ← auto-created on first run
+│   └── .env.example      ← copy to .env and fill in values
 └── flutter_app/
     ├── lib/
-    │   ├── main.dart                    ← App entry + routing
-    │   ├── config.dart                  ← ⚠️ SET YOUR SERVER IP HERE
-    │   ├── models/user_model.dart
+    │   ├── main.dart
+    │   ├── config.dart   ← set your server IP here
+    │   ├── models/
     │   ├── services/
-    │   │   ├── api_service.dart
-    │   │   └── auth_provider.dart
-    │   ├── widgets/common_widgets.dart
+    │   ├── widgets/
     │   └── screens/
-    │       ├── auth/
-    │       │   ├── login_screen.dart
-    │       │   ├── register_screen.dart
-    │       │   └── pending_screen.dart
     │       ├── admin/
-    │       │   ├── admin_dashboard.dart
-    │       │   ├── admin_users_screen.dart
-    │       │   ├── admin_departments_screen.dart
-    │       │   ├── admin_timetable_screen.dart
-    │       │   └── admin_reports_screen.dart
     │       ├── faculty/
-    │       │   └── faculty_dashboard.dart
     │       ├── student/
-    │       │   └── student_dashboard.dart
     │       ├── hod/
-    │       │   └── hod_dashboard.dart
-    │       └── principal/
-    │           └── principal_dashboard.dart
-    ├── pubspec.yaml
-    └── android/app/src/main/AndroidManifest.xml
+    │       ├── principal/
+    │       └── auth/
+    └── pubspec.yaml
 ```
 
----
+## Setup
 
-## STEP 1: Start the Server
+### Prerequisites
+- Python 3.10+
+- Flutter 3.x
+- Android Studio
 
+### Server Setup
 ```bash
-cd server/
-
-# Install dependencies
+cd server
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-
-# Run server
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+cp .env.example .env
+# edit .env and set your SECRET_KEY
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### Default admin account (auto-created):
-```
-Email:    admin@college.edu
-Password: admin123
-```
-
-### API Docs (auto-generated):
-```
-http://localhost:8000/docs
+### Flutter App Setup
+```bash
+cd flutter_app
+flutter pub get
 ```
 
----
-
-## STEP 2: Configure Flutter App
-
-Open `flutter_app/lib/config.dart` and change:
-
+Open `lib/config.dart` and set your server IP:
 ```dart
 static const String baseUrl = "http://YOUR_LAPTOP_IP:8000";
 ```
 
-Find your IP:
-- Windows: `ipconfig` → IPv4 Address
-- Mac/Linux: `ifconfig` → inet
-
-⚠️ All devices must be on the same WiFi network.
-
----
-
-## STEP 3: Run Flutter App
-
+Run on device:
 ```bash
-cd flutter_app/
-
-# Install packages
-flutter pub get
-
-# Connect phone via USB with developer mode ON
-flutter devices
-
-# Run on device
 flutter run
 ```
 
----
+### First Time Setup
+1. Login as admin
+2. Create departments
+3. Create subjects
+4. Register faculty and student accounts
+5. Admin approves accounts
+6. Admin creates timetable slots
+7. Faculty starts attendance → BLE broadcasts
+8. Student scans → marks attendance
 
-## STEP 4: Test the Full Flow
-
-### Setup (do this first via admin account):
-1. Login as admin → Departments & Subjects → Add a department
-2. Add subjects for that department
-3. Register a faculty account and a student account (use register screen)
-4. Login as admin → Pending Approvals → Approve both accounts
-5. Login as admin → Timetable → Create a slot (assign faculty + department)
-
-### Test BLE:
-1. Phone 1: Login as faculty → tap the slot → Start Attendance
-   - BLE starts broadcasting
-2. Phone 2: Login as student → tap Scan
-   - Signal detected → tap Mark
-   - Server reports the BLE event
-
-### Check server logs:
-```bash
-# In server terminal you'll see:
-# INFO: POST /attendance/start → 200
-# INFO: POST /ble/detected → 200
+## API Docs
+Once server is running, visit:
+```
+http://localhost:8000/docs
 ```
 
----
-
-## Roles & Permissions
-
-| Role      | Can Do |
-|-----------|--------|
-| Admin     | Manage everything: users, depts, subjects, timetable, reports |
-| HOD       | View/approve their dept users, view dept reports |
-| Faculty   | View own timetable, start/stop attendance via BLE |
-| Student   | View own timetable, scan BLE, mark attendance |
-| Principal | View all attendance reports college-wide |
-
----
-
-## Account States
-
-```
-Register → PENDING → (Admin approves) → APPROVED → can use app
-                   → (Admin rejects) → REJECTED → sees rejection screen
-```
-
----
-
-## Face Recognition (Future)
-
-The student attendance flow is already structured for face recognition.
-In `student_dashboard.dart`, after BLE signal is validated:
-
-```dart
-// TODO: Navigate to face recognition screen
-// This is where MediaPipe liveness + InsightFace recognition goes
-```
-
-When ready, create `screens/student/face_scan_screen.dart` and add the face scan step here.
-
----
-
-## Security Notes
-
-- JWT tokens expire in 24 hours
-- BLE tokens rotate every 5 minutes (TOTP-style)
-- Old tokens have 5-minute grace period
-- Each student can only report once per session
-- Tokens are validated server-side on every request
+## Roadmap
+- [x] Role-based authentication
+- [x] BLE attendance flow
+- [x] Timetable management
+- [x] Admin approval workflow
+- [ ] Face enrollment
+- [ ] Liveness detection (blink)
+- [ ] Face recognition
+- [ ] Push notifications (FCM)
+- [ ] Attendance percentage tracking
+- [ ] Export reports (PDF/Excel)
+- [ ] PostgreSQL migration
