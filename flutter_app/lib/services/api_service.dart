@@ -1,0 +1,343 @@
+// lib/services/api_service.dart
+
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../config.dart';
+
+class ApiService {
+  static final ApiService _instance = ApiService._internal();
+  factory ApiService() => _instance;
+  ApiService._internal();
+
+  final _storage = const FlutterSecureStorage();
+  String? _token;
+
+  // ─────────────────────────────────────────
+  // TOKEN MANAGEMENT
+  // ─────────────────────────────────────────
+  Future<void> saveToken(String token) async {
+    _token = token;
+    await _storage.write(key: 'jwt_token', value: token);
+  }
+
+  Future<String?> getToken() async {
+    _token ??= await _storage.read(key: 'jwt_token');
+    return _token;
+  }
+
+  Future<void> clearToken() async {
+    _token = null;
+    await _storage.delete(key: 'jwt_token');
+    await _storage.delete(key: 'user_data');
+  }
+
+  Future<void> saveUser(Map<String, dynamic> user) async {
+    await _storage.write(key: 'user_data', value: jsonEncode(user));
+  }
+
+  Future<Map<String, dynamic>?> getSavedUser() async {
+    final data = await _storage.read(key: 'user_data');
+    if (data == null) return null;
+    return jsonDecode(data);
+  }
+
+  // ─────────────────────────────────────────
+  // HEADERS
+  // ─────────────────────────────────────────
+  Future<Map<String, String>> _authHeaders() async {
+    final token = await getToken();
+    return {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+  }
+
+  Map<String, String> get _jsonHeaders => {'Content-Type': 'application/json'};
+
+  // ─────────────────────────────────────────
+  // AUTH
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> register({
+    required String fullName,
+    required String email,
+    required String password,
+    required String role,
+    String? departmentId,
+    String? enrollmentNumber,
+    String? employeeId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/auth/register'),
+      headers: _jsonHeaders,
+      body: jsonEncode({
+        'full_name': fullName,
+        'email': email,
+        'password': password,
+        'role': role,
+        'department_id': departmentId,
+        'enrollment_number': enrollmentNumber,
+        'employee_id': employeeId,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/auth/login'),
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: {
+        'username': email,
+        'password': password,
+      },
+    );
+    final data = _handleResponse(response);
+    if (data['access_token'] != null) {
+      await saveToken(data['access_token']);
+      await saveUser(data['user']);
+    }
+    return data;
+  }
+
+  Future<Map<String, dynamic>> getMe() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/auth/me'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // ADMIN
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getPendingUsers() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/admin/pending-users'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<List<dynamic>> getAllUsers() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/admin/all-users'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> approveUser(String userId, String action) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/admin/approve-user'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'user_id': userId, 'action': action}),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // DEPARTMENTS
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getDepartments() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/departments'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> createDepartment(String name) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/departments'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'name': name}),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> deleteDepartment(String id) async {
+    final response = await http.delete(
+      Uri.parse('${AppConfig.baseUrl}/departments/$id'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // SUBJECTS
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getSubjects() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/subjects'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> createSubject({
+    required String name,
+    required String code,
+    required String departmentId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/subjects'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'name': name, 'code': code, 'department_id': departmentId}),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> deleteSubject(String id) async {
+    final response = await http.delete(
+      Uri.parse('${AppConfig.baseUrl}/subjects/$id'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // TIMETABLE
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getTimetable() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/timetable'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> createSlot({
+    required String subjectId,
+    required String facultyId,
+    required String departmentId,
+    required String section,
+    required String dayOfWeek,
+    required String startTime,
+    required String endTime,
+    required String room,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/timetable'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'subject_id': subjectId,
+        'faculty_id': facultyId,
+        'department_id': departmentId,
+        'section': section,
+        'day_of_week': dayOfWeek,
+        'start_time': startTime,
+        'end_time': endTime,
+        'room': room,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // ATTENDANCE / BLE
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> startAttendance(String slotId) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/attendance/start'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'slot_id': slotId}),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> stopAttendance(String sessionId) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/attendance/stop/$sessionId'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> reportBleDetected({
+    required String token,
+    required int rssi,
+    required String timestamp,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/ble/detected'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'token': token,
+        'rssi': rssi,
+        'timestamp': timestamp,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<List<dynamic>> getBleEvents() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/ble/events'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  // ─────────────────────────────────────────
+  // HOD
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getHodDepartmentUsers() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/hod/department-users'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<List<dynamic>> getHodPendingUsers() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/hod/pending-users'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> hodApproveUser(String userId, String action) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/hod/approve-user'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'user_id': userId, 'action': action}),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // REPORTS
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getAttendanceReport() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/reports/attendance'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  // ─────────────────────────────────────────
+  // RESPONSE HANDLER
+  // ─────────────────────────────────────────
+  dynamic _handleResponse(http.Response response) {
+    final body = jsonDecode(response.body);
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return body;
+    }
+    throw ApiException(
+      statusCode: response.statusCode,
+      message: body['detail'] ?? 'Something went wrong',
+    );
+  }
+}
+
+class ApiException implements Exception {
+  final int statusCode;
+  final String message;
+  ApiException({required this.statusCode, required this.message});
+
+  @override
+  String toString() => message;
+}

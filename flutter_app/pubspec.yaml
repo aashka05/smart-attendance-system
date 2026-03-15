@@ -1,0 +1,44 @@
+name: attendance_system
+description: Attendance System with BLE and Face Recognition
+
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # State management
+  provider: ^6.1.2
+
+  # BLE
+  flutter_blue_plus: 1.36.8
+  flutter_ble_peripheral: ^2.1.0
+
+  # HTTP
+  http: ^1.6.0
+  dio: ^5.4.3
+
+  # Storage
+  shared_preferences: ^2.2.3
+  flutter_secure_storage: ^10.0.0
+
+  # UI
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.3.2
+
+  # Utils
+  permission_handler: ^11.3.1
+  intl: ^0.19.0
+  #provider: ^6.1.5+1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
