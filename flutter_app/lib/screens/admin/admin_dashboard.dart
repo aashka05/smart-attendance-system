@@ -10,6 +10,7 @@ import 'admin_users_screen.dart';
 import 'admin_departments_screen.dart';
 import 'admin_timetable_screen.dart';
 import 'admin_reports_screen.dart';
+import 'admin_enrollment_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -160,6 +161,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 color: const Color(0xFF1565C0),
                 onTap: () => Navigator.push(context,
                     MaterialPageRoute(builder: (_) => const AdminReportsScreen())),
+              ),
+              const SizedBox(height: 12),
+              _ActionCard(
+                icon: Icons.face,
+                title: 'Face Enrollments',
+                subtitle: 'Review student face enrollments',
+                color: const Color(0xFF00897B),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const AdminEnrollmentScreen())),
               ),
             ],
           ),

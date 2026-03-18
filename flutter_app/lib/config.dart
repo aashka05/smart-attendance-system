@@ -2,7 +2,7 @@
 
 class AppConfig {
   // ⚠️ CHANGE THIS to your laptop's local IP address
-  static const String baseUrl = "http://10.47.170.64:8000";
+  static const String baseUrl = "http://192.168.1.108:8000";
 
   // BLE
   static const int manufacturerId = 0x4154; // "AT" in hex

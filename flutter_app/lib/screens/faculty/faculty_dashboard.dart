@@ -122,11 +122,11 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
         manufacturerData: Uint8List.fromList(token.codeUnits),
       );
       await peripheral.start(advertiseData: advertiseData);
-      print('BLE advertising started with token: $token');
+      print('=== BLE ADVERTISING STARTED: $token ===');
       _showSnack('Broadcasting: $token');
       setState(() => _isAdvertising = true);
     } catch (e) {
-      print('BLE error: $e');
+      print('=== BLE ADVERTISING ERROR: $e ===');
       _showSnack('BLE failed: $e', isError: true);
       setState(() => _isAdvertising = true);
     }

@@ -1,26 +1,24 @@
+# main.py
+
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime, timedelta
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+from jose import jwt
 import sqlite3
 import uuid
-import hmac
-import hashlib
-import time
-import json
+
+from database import (
+    get_db, get_current_user, require_role,
+    SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
+    BLE_TOKEN_WINDOW, pwd_context, oauth2_scheme
+)
 
 # ─────────────────────────────────────────
-# CONFIG
+# APP SETUP
 # ─────────────────────────────────────────
-SECRET_KEY = os.getenv("SECRET_KEY", "fallback_dev_key")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
-BLE_TOKEN_WINDOW = 300  # 5 minutes
-
 app = FastAPI(title="Attendance System API", version="1.0.0")
 
 app.add_middleware(
@@ -30,17 +28,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
-
 # ─────────────────────────────────────────
-# DATABASE SETUP
+# DATABASE INIT
 # ─────────────────────────────────────────
-def get_db():
-    conn = sqlite3.connect("attendance.db", check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
 def init_db():
     conn = get_db()
     c = conn.cursor()
@@ -76,6 +66,9 @@ def init_db():
             employee_id TEXT,
             status TEXT DEFAULT 'pending',
             face_enrolled INTEGER DEFAULT 0,
+            year INTEGER,
+            practical_batch TEXT,
+            tutorial_batch TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (department_id) REFERENCES departments(id)
         )
@@ -87,7 +80,11 @@ def init_db():
             subject_id TEXT NOT NULL,
             faculty_id TEXT NOT NULL,
             department_id TEXT NOT NULL,
-            section TEXT NOT NULL,
+            section TEXT,
+            division_id TEXT,
+            year INTEGER,
+            lecture_type TEXT DEFAULT 'lecture',
+            batch TEXT,
             day_of_week TEXT NOT NULL,
             start_time TEXT NOT NULL,
             end_time TEXT NOT NULL,
@@ -136,7 +133,7 @@ def init_db():
         )
     """)
 
-    # Seed default admin if not exists
+    # Seed default admin
     existing = c.execute("SELECT id FROM users WHERE role='admin'").fetchone()
     if not existing:
         admin_id = str(uuid.uuid4())
@@ -144,12 +141,8 @@ def init_db():
             INSERT INTO users (id, full_name, email, password_hash, role, status)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (
-            admin_id,
-            "System Admin",
-            "admin@college.edu",
-            pwd_context.hash("admin123"),
-            "admin",
-            "approved"
+            admin_id, "System Admin", "admin@college.edu",
+            pwd_context.hash("admin123"), "admin", "approved"
         ))
         print("✅ Default admin created: admin@college.edu / admin123")
 
@@ -159,16 +152,34 @@ def init_db():
 init_db()
 
 # ─────────────────────────────────────────
+# INCLUDE ROUTERS
+# ─────────────────────────────────────────
+from ble_routes import router as ble_router
+from face_routes import router as face_router
+from divisions_routes import router as divisions_router
+from events_routes import router as events_router
+from stats_routes import router as stats_router
+
+app.include_router(ble_router)
+app.include_router(face_router)
+app.include_router(divisions_router)
+app.include_router(events_router)
+app.include_router(stats_router)
+
+# ─────────────────────────────────────────
 # PYDANTIC MODELS
 # ─────────────────────────────────────────
 class RegisterRequest(BaseModel):
     full_name: str
     email: str
     password: str
-    role: str  # admin, faculty, student, hod, principal
+    role: str
     department_id: Optional[str] = None
     enrollment_number: Optional[str] = None
     employee_id: Optional[str] = None
+    year: Optional[int] = None
+    practical_batch: Optional[str] = None
+    tutorial_batch: Optional[str] = None
 
 class TokenResponse(BaseModel):
     access_token: str
@@ -177,7 +188,7 @@ class TokenResponse(BaseModel):
 
 class ApproveRequest(BaseModel):
     user_id: str
-    action: str  # approve or reject
+    action: str
 
 class DepartmentCreate(BaseModel):
     name: str
@@ -191,19 +202,15 @@ class SlotCreate(BaseModel):
     subject_id: str
     faculty_id: str
     department_id: str
-    section: str
+    section: Optional[str] = None
+    division_id: Optional[str] = None
+    year: Optional[int] = None
+    lecture_type: str = 'lecture'
+    batch: Optional[str] = None
     day_of_week: str
     start_time: str
     end_time: str
     room: str
-
-class BLEDetectedRequest(BaseModel):
-    token: str
-    rssi: int
-    timestamp: str
-
-class StartAttendanceRequest(BaseModel):
-    slot_id: str
 
 # ─────────────────────────────────────────
 # AUTH HELPERS
@@ -219,54 +226,6 @@ def create_token(data: dict) -> str:
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired token",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
-    if user is None:
-        raise credentials_exception
-    return dict(user)
-
-def require_role(*roles):
-    def checker(current_user: dict = Depends(get_current_user)):
-        if current_user["role"] not in roles:
-            raise HTTPException(status_code=403, detail=f"Access denied. Required roles: {roles}")
-        if current_user["status"] != "approved":
-            raise HTTPException(status_code=403, detail="Account pending approval")
-        return current_user
-    return checker
-
-# ─────────────────────────────────────────
-# BLE TOKEN HELPERS
-# ─────────────────────────────────────────
-def generate_ble_token(slot_id: str) -> str:
-    window = int(time.time() // BLE_TOKEN_WINDOW)
-    message = f"{slot_id}:{window}".encode()
-    return "ATT:" + hmac.new(SECRET_KEY.encode(), message, hashlib.sha256).hexdigest()[:12]
-
-def validate_ble_token(token: str, slot_id: str) -> bool:
-    # Check current window and previous window (grace period)
-    for offset in [0, -1]:
-        window = int(time.time() // BLE_TOKEN_WINDOW) + offset
-        message = f"{slot_id}:{window}".encode()
-        expected = "ATT:" + hmac.new(SECRET_KEY.encode(), message, hashlib.sha256).hexdigest()[:12]
-        if token == expected:
-            return True
-    return False
 
 # ─────────────────────────────────────────
 # AUTH ROUTES
@@ -285,18 +244,17 @@ def register(req: RegisterRequest):
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {valid_roles}")
 
     user_id = str(uuid.uuid4())
-    # Admin registrations still need approval from existing admin
-    initial_status = "pending"
-
     conn.execute("""
         INSERT INTO users (id, full_name, email, password_hash, role, department_id,
-                           enrollment_number, employee_id, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           enrollment_number, employee_id, status, year,
+                           practical_batch, tutorial_batch)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         user_id, req.full_name, req.email,
         hash_password(req.password), req.role,
         req.department_id, req.enrollment_number,
-        req.employee_id, initial_status
+        req.employee_id, "pending",
+        req.year, req.practical_batch, req.tutorial_batch
     ))
     conn.commit()
     conn.close()
@@ -318,15 +276,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
     user_dict = dict(user)
     token = create_token({"sub": user_dict["id"], "role": user_dict["role"]})
-
-    # Remove sensitive data
     user_dict.pop("password_hash", None)
 
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "user": user_dict
-    }
+    return {"access_token": token, "token_type": "bearer", "user": user_dict}
 
 @app.get("/auth/me")
 def get_me(current_user: dict = Depends(get_current_user)):
@@ -505,10 +457,12 @@ def create_slot(req: SlotCreate, current_user: dict = Depends(require_role("admi
     slot_id = str(uuid.uuid4())
     conn.execute("""
         INSERT INTO timetable_slots
-        (id, subject_id, faculty_id, department_id, section, day_of_week, start_time, end_time, room)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, subject_id, faculty_id, department_id, section, division_id,
+         year, lecture_type, batch, day_of_week, start_time, end_time, room)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (slot_id, req.subject_id, req.faculty_id, req.department_id,
-          req.section, req.day_of_week, req.start_time, req.end_time, req.room))
+          req.section, req.division_id, req.year, req.lecture_type,
+          req.batch, req.day_of_week, req.start_time, req.end_time, req.room))
     conn.commit()
     conn.close()
     return {"id": slot_id, "message": "Timetable slot created"}
@@ -520,116 +474,6 @@ def delete_slot(slot_id: str, current_user: dict = Depends(require_role("admin")
     conn.commit()
     conn.close()
     return {"message": "Slot deactivated"}
-
-# ─────────────────────────────────────────
-# ATTENDANCE / BLE ROUTES
-# ─────────────────────────────────────────
-@app.post("/attendance/start")
-def start_attendance(req: StartAttendanceRequest, current_user: dict = Depends(require_role("faculty"))):
-    conn = get_db()
-
-    # Verify this slot belongs to this faculty
-    slot = conn.execute("""
-        SELECT ts.*, s.name as subject_name
-        FROM timetable_slots ts
-        LEFT JOIN subjects s ON ts.subject_id = s.id
-        WHERE ts.id = ? AND ts.faculty_id = ?
-    """, (req.slot_id, current_user["id"])).fetchone()
-
-    if not slot:
-        conn.close()
-        raise HTTPException(status_code=403, detail="Slot not found or not assigned to you")
-
-    # Close any existing live session for this slot
-    conn.execute("""
-        UPDATE attendance_sessions SET status = 'closed', ended_at = ?
-        WHERE slot_id = ? AND status = 'live'
-    """, (datetime.utcnow().isoformat(), req.slot_id))
-
-    # Generate new token
-    token = generate_ble_token(req.slot_id)
-    session_id = str(uuid.uuid4())
-
-    conn.execute("""
-        INSERT INTO attendance_sessions (id, slot_id, faculty_id, token, status)
-        VALUES (?, ?, ?, ?, 'live')
-    """, (session_id, req.slot_id, current_user["id"], token))
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "session_id": session_id,
-        "token": token,
-        "slot_id": req.slot_id,
-        "subject_name": slot["subject_name"],
-        "message": "Attendance session started. Broadcasting BLE token."
-    }
-
-@app.post("/attendance/stop/{session_id}")
-def stop_attendance(session_id: str, current_user: dict = Depends(require_role("faculty"))):
-    conn = get_db()
-    conn.execute("""
-        UPDATE attendance_sessions SET status = 'closed', ended_at = ?
-        WHERE id = ? AND faculty_id = ?
-    """, (datetime.utcnow().isoformat(), session_id, current_user["id"]))
-    conn.commit()
-    conn.close()
-    return {"message": "Attendance session closed"}
-
-@app.post("/ble/detected")
-def ble_detected(req: BLEDetectedRequest, current_user: dict = Depends(get_current_user)):
-    if current_user["status"] != "approved":
-        raise HTTPException(status_code=403, detail="Account not approved")
-
-    conn = get_db()
-
-    # Find active session with this token
-    session = conn.execute("""
-        SELECT * FROM attendance_sessions
-        WHERE token = ? AND status = 'live'
-    """, (req.token,)).fetchone()
-
-    session_id = session["id"] if session else None
-    slot_id = session["slot_id"] if session else None
-
-    # Validate token if session found
-    token_valid = False
-    if slot_id:
-        token_valid = validate_ble_token(req.token, slot_id)
-
-    event_id = str(uuid.uuid4())
-    conn.execute("""
-        INSERT INTO ble_events (id, student_id, student_name, token, rssi, session_id, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
-        event_id,
-        current_user["id"],
-        current_user["full_name"],
-        req.token,
-        req.rssi,
-        session_id,
-        req.timestamp
-    ))
-
-    conn.commit()
-    conn.close()
-
-    return {
-        "status": "received",
-        "token_valid": token_valid,
-        "session_found": session_id is not None,
-        "message": "BLE signal logged" + (" — valid session found" if session_id else " — no matching session")
-    }
-
-@app.get("/ble/events")
-def get_ble_events(current_user: dict = Depends(require_role("admin", "faculty"))):
-    conn = get_db()
-    events = conn.execute("""
-        SELECT * FROM ble_events ORDER BY timestamp DESC LIMIT 100
-    """).fetchall()
-    conn.close()
-    return [dict(e) for e in events]
 
 # ─────────────────────────────────────────
 # HOD ROUTES
@@ -678,7 +522,7 @@ def hod_approve_user(req: ApproveRequest, current_user: dict = Depends(require_r
     return {"message": f"User {req.action}d successfully"}
 
 # ─────────────────────────────────────────
-# ATTENDANCE REPORTS
+# REPORTS
 # ─────────────────────────────────────────
 @app.get("/reports/attendance")
 def get_attendance_report(current_user: dict = Depends(get_current_user)):
@@ -696,8 +540,7 @@ def get_attendance_report(current_user: dict = Depends(get_current_user)):
             LEFT JOIN timetable_slots ts ON ases.slot_id = ts.id
             LEFT JOIN subjects s ON ts.subject_id = s.id
             LEFT JOIN departments d ON ts.department_id = d.id
-            ORDER BY ar.marked_at DESC
-            LIMIT 200
+            ORDER BY ar.marked_at DESC LIMIT 200
         """).fetchall()
     elif role in ["admin", "hod"]:
         dept_id = current_user.get("department_id") if role == "hod" else None
@@ -728,7 +571,7 @@ def get_attendance_report(current_user: dict = Depends(get_current_user)):
             WHERE ases.faculty_id = ?
             ORDER BY ar.marked_at DESC LIMIT 100
         """, (current_user["id"],)).fetchall()
-    else:  # student
+    else:
         records = conn.execute("""
             SELECT ar.*, s.name as subject_name, ases.started_at
             FROM attendance_records ar
@@ -742,6 +585,9 @@ def get_attendance_report(current_user: dict = Depends(get_current_user)):
     conn.close()
     return [dict(r) for r in records]
 
+# ─────────────────────────────────────────
+# HEALTH CHECK
+# ─────────────────────────────────────────
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.utcnow().isoformat()}

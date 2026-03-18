@@ -1,5 +1,5 @@
 // lib/screens/student/student_dashboard.dart
-
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -8,6 +8,8 @@ import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
+import 'face_enrollment_screen.dart';
+import 'face_scan_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -22,15 +24,28 @@ class _StudentDashboardState extends State<StudentDashboard> {
   List<Map<String, dynamic>> _detectedSignals = [];
   String _scanStatus = 'Tap "Scan" when your lecture starts';
   bool _isReporting = false;
+  Map<String, dynamic>? _enrollmentStatus;
+  StreamSubscription? _scanSub;
+  StreamSubscription? _scanStateSub;
 
   @override
   void initState() {
     super.initState();
     _loadSlots();
+    _loadEnrollmentStatus();
+  }
+
+  Future<void> _loadEnrollmentStatus() async {
+    try {
+      final status = await ApiService().getEnrollmentStatus();
+      setState(() => _enrollmentStatus = status);
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _scanSub?.cancel();
+    _scanStateSub?.cancel();
     FlutterBluePlus.stopScan();
     super.dispose();
   }
@@ -54,6 +69,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   Future<void> _startScanning() async {
+    print('=== BLE SCAN START ===');
+    final state = await FlutterBluePlus.adapterState.first;
+    print('Bluetooth state: $state');
+    bool isSupported = await FlutterBluePlus.isSupported;
+    print('BLE supported: $isSupported');
     setState(() {
       _isScanning = true;
       _detectedSignals.clear();
@@ -62,29 +82,35 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: AppConfig.bleScanDuration));
 
-    FlutterBluePlus.scanResults.listen((results) {
-      for (ScanResult r in results) {
-        final mfrData = r.advertisementData.manufacturerData;
-        if (mfrData.containsKey(0x4154)) {
-          final data = mfrData[0x4154]!;
-          final token = String.fromCharCodes(data);
-          final rssi = r.rssi;
-          final exists = _detectedSignals.any((s) => s['token'] == token);
-          if (!exists) {
-            setState(() {
-              _detectedSignals.add({
-                'token': token,
-                'rssi': rssi,
-                'reported': false,
+    _scanSub = FlutterBluePlus.scanResults.listen((results) {
+      if (!mounted) return;
+        for (ScanResult r in results) {
+          final mfrData = r.advertisementData.manufacturerData;
+          if (r.advertisementData.manufacturerData.isNotEmpty) {
+            print('Device: ${r.device.remoteId}');
+            print('Manufacturer data: ${r.advertisementData.manufacturerData}');
+          }
+          if (mfrData.containsKey(0x4154)) {
+            final data = mfrData[0x4154]!;
+            final token = String.fromCharCodes(data);
+            final rssi = r.rssi;
+            final exists = _detectedSignals.any((s) => s['token'] == token);
+            if (!exists) {
+              setState(() {
+                _detectedSignals.add({
+                  'token': token,
+                  'rssi': rssi,
+                  'reported': false,
+                });
+                _scanStatus = '${_detectedSignals.length} signal(s) detected';
               });
-              _scanStatus = '${_detectedSignals.length} signal(s) detected';
-            });
+            }
           }
         }
-      }
     });
 
-    FlutterBluePlus.isScanning.listen((scanning) {
+    _scanStateSub = FlutterBluePlus.isScanning.listen((scanning) {
+      if (!mounted) return;  // ← ADD THIS
       if (!scanning && mounted) {
         setState(() {
           _isScanning = false;
@@ -110,14 +136,34 @@ class _StudentDashboardState extends State<StudentDashboard> {
         timestamp: DateTime.now().toIso8601String(),
       );
 
+      print('Token being sent: ${signal['token']}');
+      print('Session ID returned: ${result['session_id']}');
+      print('Token valid: ${result['token_valid']}');
+
       setState(() => signal['reported'] = true);
 
       final tokenValid = result['token_valid'] as bool? ?? false;
       final sessionFound = result['session_found'] as bool? ?? false;
+      final sessionId = result['session_id'] as String?;
 
-      if (tokenValid && sessionFound) {
-        _showSnack('✅ Attendance signal verified! Proceed to face scan');
-        // TODO: Navigate to face recognition screen
+      if (tokenValid && sessionFound && sessionId != null) {
+        // Check enrollment status
+        final enrollStatus = _enrollmentStatus?['status'];
+        if (enrollStatus != 'approved') {
+          _showEnrollmentDialog();
+          return;
+        }
+        // Navigate to face scan
+        if (mounted) {
+          Navigator.push(context, MaterialPageRoute(
+            builder: (_) => FaceScanScreen(
+              sessionId: sessionId,
+              token: signal['token'],
+              subjectName: signal['subject_name'] ?? 'Attendance',
+            ),
+          ));
+        }
+        
       } else {
         _showSnack('⚠️ Signal found but no matching active session', isError: true);
       }
@@ -125,6 +171,49 @@ class _StudentDashboardState extends State<StudentDashboard> {
       _showSnack(e.toString(), isError: true);
     }
     setState(() => _isReporting = false);
+  }
+
+  void _showEnrollmentDialog() {
+    final status = _enrollmentStatus?['status'] ?? 'not_submitted';
+    String message;
+    String buttonText;
+    VoidCallback? onPressed;
+
+    if (status == 'pending') {
+      message = 'Your face enrollment is pending admin approval. You cannot mark attendance until approved.';
+      buttonText = 'OK';
+      onPressed = () => Navigator.pop(context);
+    } else if (status == 'rejected') {
+      message = 'Your face enrollment was rejected. Please re-enroll with a clear photo.';
+      buttonText = 'Re-enroll';
+      onPressed = () {
+        Navigator.pop(context);
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => const FaceEnrollmentScreen(),
+        ));
+      };
+    } else {
+      message = 'You need to enroll your face before marking attendance.';
+      buttonText = 'Enroll Now';
+      onPressed = () {
+        Navigator.pop(context);
+        Navigator.push(context, MaterialPageRoute(
+          builder: (_) => const FaceEnrollmentScreen(),
+        ));
+      };
+    }
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Face Enrollment Required'),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: onPressed, child: Text(buttonText)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -166,6 +255,41 @@ class _StudentDashboardState extends State<StudentDashboard> {
             Text('Student • ${user.departmentName ?? 'No Department'} • ${user.enrollmentNumber ?? ''}',
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
             const SizedBox(height: 24),
+
+            // Enrollment status banner
+            if (_enrollmentStatus != null && _enrollmentStatus!['status'] != 'approved') ...[
+              GestureDetector(
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const FaceEnrollmentScreen(),
+                )).then((_) => _loadEnrollmentStatus()),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE65100).withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.face, color: Color(0xFFE65100), size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _enrollmentStatus!['status'] == 'pending'
+                              ? 'Face enrollment pending approval'
+                              : 'Face enrollment required — tap to enroll',
+                          style: const TextStyle(color: Color(0xFFE65100), fontSize: 13),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: Color(0xFFE65100), size: 18),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            const SizedBox(height: 12),
 
             // BLE Scanner Card
             Container(

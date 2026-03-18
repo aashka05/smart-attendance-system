@@ -142,7 +142,7 @@ class ApiService {
   Future<List<dynamic>> getDepartments() async {
     final response = await http.get(
       Uri.parse('${AppConfig.baseUrl}/departments'),
-      headers: await _authHeaders(),
+      headers: _jsonHeaders,
     );
     return _handleResponse(response) as List;
   }
@@ -316,6 +316,105 @@ class ApiService {
       headers: await _authHeaders(),
     );
     return _handleResponse(response) as List;
+  }
+
+  // ─────────────────────────────────────────
+  // FACE ENROLLMENT
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> checkDuplicateFace({
+    required String faceImageB64,
+    required String idCardImageB64,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/enrollment/check-duplicate'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'face_image_b64': faceImageB64,
+        'id_card_image_b64': idCardImageB64,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> submitFaceEnrollment({
+    required String faceImageB64,
+    required String idCardImageB64,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/enrollment/submit'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'face_image_b64': faceImageB64,
+        'id_card_image_b64': idCardImageB64,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> getEnrollmentStatus() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/enrollment/status'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<List<dynamic>> getPendingEnrollments() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/enrollment/pending'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> reviewEnrollment({
+    required String enrollmentId,
+    required String action,
+    String? rejectionReason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/enrollment/review'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'enrollment_id': enrollmentId,
+        'action': action,
+        'rejection_reason': rejectionReason,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // FACE RECOGNITION
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> getLivenessChallenge({
+    required String sessionId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/attendance/challenge'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'session_id': sessionId}),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> verifyFace({
+    required String sessionId,
+    required String token,
+    required String faceImageB64,
+    required String challengeId,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/attendance/verify-face'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'session_id': sessionId,
+        'token': token,
+        'face_image_b64': faceImageB64,
+        'challenge_id': challengeId,
+      }),
+    );
+    return _handleResponse(response);
   }
 
   // ─────────────────────────────────────────
