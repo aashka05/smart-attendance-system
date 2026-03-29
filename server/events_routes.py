@@ -8,6 +8,7 @@ from database import get_db, get_current_user, require_role
 
 router = APIRouter()
 
+
 class EventCreate(BaseModel):
     title: str
     date: str  # YYYY-MM-DD
@@ -16,10 +17,12 @@ class EventCreate(BaseModel):
     year: Optional[int] = None  # null = all years
     description: Optional[str] = None
 
+
 class LectureCancelRequest(BaseModel):
     slot_id: str
     date: str  # YYYY-MM-DD
     reason: Optional[str] = None
+
 
 def init_events_db():
     conn = get_db()
@@ -35,7 +38,7 @@ def init_events_db():
             year INTEGER,
             description TEXT,
             created_by TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW(),
             FOREIGN KEY (department_id) REFERENCES departments(id),
             FOREIGN KEY (created_by) REFERENCES users(id)
         )
@@ -48,7 +51,7 @@ def init_events_db():
             date TEXT NOT NULL,
             reason TEXT,
             cancelled_by TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT NOW(),
             FOREIGN KEY (slot_id) REFERENCES timetable_slots(id),
             FOREIGN KEY (cancelled_by) REFERENCES users(id)
         )
@@ -57,7 +60,9 @@ def init_events_db():
     conn.commit()
     conn.close()
 
+
 init_events_db()
+
 
 # ─────────────────────────────────────────
 # COLLEGE EVENTS
@@ -68,7 +73,7 @@ def get_events(
     year: Optional[int] = None,
     department_id: Optional[str] = None,
     year_level: Optional[int] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
 ):
     conn = get_db()
     query = """
@@ -82,122 +87,144 @@ def get_events(
     params = []
 
     if month and year:
-        query += " AND strftime('%m', ce.date) = ? AND strftime('%Y', ce.date) = ?"
-        params.extend([f"{month:02d}", str(year)])
+        query += " AND EXTRACT(MONTH FROM ce.date::date) = %s AND EXTRACT(YEAR FROM ce.date::date) = %s"
+        params.extend([month, year])
     elif year:
-        query += " AND strftime('%Y', ce.date) = ?"
-        params.append(str(year))
+        query += " AND EXTRACT(YEAR FROM ce.date::date) = %s"
+        params.append(year)
 
     if department_id:
-        query += " AND (ce.department_id = ? OR ce.department_id IS NULL)"
+        query += " AND (ce.department_id = %s OR ce.department_id IS NULL)"
         params.append(department_id)
 
     if year_level:
-        query += " AND (ce.year = ? OR ce.year IS NULL)"
+        query += " AND (ce.year = %s OR ce.year IS NULL)"
         params.append(year_level)
 
     query += " ORDER BY ce.date ASC"
-    events = conn.execute(query, params).fetchall()
+    events = conn.execute(query, params if params else None).fetchall()
     conn.close()
     return [dict(e) for e in events]
+
 
 @router.post("/events")
 def create_event(
     req: EventCreate,
-    current_user: dict = Depends(require_role("admin", "principal", "hod"))
+    current_user: dict = Depends(require_role("admin", "principal", "hod")),
 ):
     valid_types = ["holiday", "exam", "fest", "expert_talk"]
     if req.event_type not in valid_types:
         raise HTTPException(
-            status_code=400,
-            detail=f"Invalid event type. Must be one of: {valid_types}"
+            status_code=400, detail=f"Invalid event type. Must be one of: {valid_types}"
         )
 
     conn = get_db()
     event_id = str(uuid.uuid4())
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO college_events
         (id, title, date, event_type, department_id, year, description, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        event_id, req.title, req.date, req.event_type,
-        req.department_id, req.year, req.description,
-        current_user["id"]
-    ))
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """,
+        (
+            event_id,
+            req.title,
+            req.date,
+            req.event_type,
+            req.department_id,
+            req.year,
+            req.description,
+            current_user["id"],
+        ),
+    )
     conn.commit()
     conn.close()
     return {"id": event_id, "message": "Event created"}
 
+
 @router.delete("/events/{event_id}")
 def delete_event(
     event_id: str,
-    current_user: dict = Depends(require_role("admin", "principal", "hod"))
+    current_user: dict = Depends(require_role("admin", "principal", "hod")),
 ):
     conn = get_db()
-    conn.execute("DELETE FROM college_events WHERE id = ?", (event_id,))
+    conn.execute("DELETE FROM college_events WHERE id = %s", (event_id,))
     conn.commit()
     conn.close()
     return {"message": "Event deleted"}
+
 
 # ─────────────────────────────────────────
 # CANCELLED LECTURES
 # ─────────────────────────────────────────
 @router.post("/lectures/cancel")
 def cancel_lecture(
-    req: LectureCancelRequest,
-    current_user: dict = Depends(require_role("faculty"))
+    req: LectureCancelRequest, current_user: dict = Depends(require_role("faculty"))
 ):
     conn = get_db()
 
     # Verify slot belongs to faculty
-    slot = conn.execute("""
+    slot = conn.execute(
+        """
         SELECT * FROM timetable_slots
-        WHERE id = ? AND faculty_id = ?
-    """, (req.slot_id, current_user["id"])).fetchone()
+        WHERE id = %s AND faculty_id = %s
+    """,
+        (req.slot_id, current_user["id"]),
+    ).fetchone()
 
     if not slot:
         conn.close()
         raise HTTPException(
-            status_code=403,
-            detail="Slot not found or not assigned to you"
+            status_code=403, detail="Slot not found or not assigned to you"
         )
 
     # Check not already cancelled
-    existing = conn.execute("""
+    existing = conn.execute(
+        """
         SELECT id FROM cancelled_lectures
-        WHERE slot_id = ? AND date = ?
-    """, (req.slot_id, req.date)).fetchone()
+        WHERE slot_id = %s AND date = %s
+    """,
+        (req.slot_id, req.date),
+    ).fetchone()
 
     if existing:
         conn.close()
-        raise HTTPException(status_code=400, detail="Lecture already cancelled for this date")
+        raise HTTPException(
+            status_code=400, detail="Lecture already cancelled for this date"
+        )
 
     cancel_id = str(uuid.uuid4())
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO cancelled_lectures (id, slot_id, date, reason, cancelled_by)
-        VALUES (?, ?, ?, ?, ?)
-    """, (cancel_id, req.slot_id, req.date, req.reason, current_user["id"]))
+        VALUES (%s, %s, %s, %s, %s)
+    """,
+        (cancel_id, req.slot_id, req.date, req.reason, current_user["id"]),
+    )
 
     conn.commit()
     conn.close()
     return {"id": cancel_id, "message": "Lecture cancelled"}
 
+
 @router.get("/lectures/cancelled")
 def get_cancelled_lectures(
-    slot_id: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    slot_id: Optional[str] = None, current_user: dict = Depends(get_current_user)
 ):
     conn = get_db()
     if slot_id:
-        records = conn.execute("""
+        records = conn.execute(
+            """
             SELECT cl.*, u.full_name as cancelled_by_name,
                    ts.subject_id
             FROM cancelled_lectures cl
             LEFT JOIN users u ON cl.cancelled_by = u.id
             LEFT JOIN timetable_slots ts ON cl.slot_id = ts.id
-            WHERE cl.slot_id = ?
+            WHERE cl.slot_id = %s
             ORDER BY cl.date DESC
-        """, (slot_id,)).fetchall()
+        """,
+            (slot_id,),
+        ).fetchall()
     else:
         records = conn.execute("""
             SELECT cl.*, u.full_name as cancelled_by_name,
@@ -210,13 +237,13 @@ def get_cancelled_lectures(
     conn.close()
     return [dict(r) for r in records]
 
+
 @router.delete("/lectures/cancelled/{cancel_id}")
 def restore_lecture(
-    cancel_id: str,
-    current_user: dict = Depends(require_role("faculty", "admin"))
+    cancel_id: str, current_user: dict = Depends(require_role("faculty", "admin"))
 ):
     conn = get_db()
-    conn.execute("DELETE FROM cancelled_lectures WHERE id = ?", (cancel_id,))
+    conn.execute("DELETE FROM cancelled_lectures WHERE id = %s", (cancel_id,))
     conn.commit()
     conn.close()
     return {"message": "Cancellation removed"}

@@ -426,6 +426,173 @@ class ApiService {
   }
 
   // ─────────────────────────────────────────
+  // STUDENT STATS
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> getStudentStats(String studentId) async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/stats/student/$studentId'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> getStudentCalendar({
+    required String studentId,
+    required int month,
+    required int year,
+    String? subjectId,
+  }) async {
+    var url = '${AppConfig.baseUrl}/stats/calendar/$studentId?month=$month&year=$year';
+    if (subjectId != null) url += '&subject_id=$subjectId';
+    final response = await http.get(
+      Uri.parse(url),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // CLASS STATS (faculty/admin/hod)
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> getClassStats(String slotId) async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/stats/class/$slotId'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> getClassCalendar({
+    required String slotId,
+    required int month,
+    required int year,
+  }) async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/stats/class/calendar/$slotId?month=$month&year=$year'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // EVENTS
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getEvents({
+    int? month,
+    int? year,
+    String? departmentId,
+    int? yearLevel,
+  }) async {
+    var url = '${AppConfig.baseUrl}/events?';
+    if (month != null) url += 'month=$month&';
+    if (year != null) url += 'year=$year&';
+    if (departmentId != null) url += 'department_id=$departmentId&';
+    if (yearLevel != null) url += 'year_level=$yearLevel&';
+    final response = await http.get(
+      Uri.parse(url),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> createEvent({
+    required String title,
+    required String date,
+    required String eventType,
+    String? departmentId,
+    int? year,
+    String? description,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/events'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'title': title,
+        'date': date,
+        'event_type': eventType,
+        'department_id': departmentId,
+        'year': year,
+        'description': description,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> deleteEvent(String eventId) async {
+    final response = await http.delete(
+      Uri.parse('${AppConfig.baseUrl}/events/$eventId'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<Map<String, dynamic>> cancelLecture({
+    required String slotId,
+    required String date,
+    String? reason,
+  }) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/lectures/cancel'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'slot_id': slotId,
+        'date': date,
+        'reason': reason,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<List<dynamic>> getCancelledLectures({String? slotId}) async {
+    var url = '${AppConfig.baseUrl}/lectures/cancelled';
+    if (slotId != null) url += '?slot_id=$slotId';
+    final response = await http.get(
+      Uri.parse(url),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  Future<Map<String, dynamic>> restoreLecture(String cancelId) async {
+    final response = await http.delete(
+      Uri.parse('${AppConfig.baseUrl}/lectures/cancelled/$cancelId'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
+  // DIVISIONS
+  // ─────────────────────────────────────────
+  Future<List<dynamic>> getDivisions() async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/divisions'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response) as List;
+  }
+
+  // ─────────────────────────────────────────
+  // PROFILE
+  // ─────────────────────────────────────────
+  Future<Map<String, dynamic>> updateProfile({
+    required String fullName,
+    String? practicalBatch,
+    String? tutorialBatch,
+  }) async {
+    final response = await http.put(
+      Uri.parse('${AppConfig.baseUrl}/auth/profile'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'full_name': fullName,
+        'practical_batch': practicalBatch,
+        'tutorial_batch': tutorialBatch,
+      }),
+    );
+    return _handleResponse(response);
+  }
+
+  // ─────────────────────────────────────────
   // RESPONSE HANDLER
   // ─────────────────────────────────────────
   dynamic _handleResponse(http.Response response) {
