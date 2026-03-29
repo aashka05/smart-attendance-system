@@ -10,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
 import '../profile/profile_screen.dart';
+import 'class_attendance_screen.dart';
 
 class FacultyDashboard extends StatefulWidget {
   const FacultyDashboard({super.key});
@@ -170,6 +171,110 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
     final m = (_secondsRemaining ~/ 60).toString().padLeft(2, '0');
     final s = (_secondsRemaining % 60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  void _showCancelDialog(Map<String, dynamic> slot) {
+    DateTime? selectedDate;
+    final reasonCtrl = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Cancel Lecture'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: ctx,
+                    initialDate: selectedDate ?? DateTime.now(),
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                  );
+                  if (picked != null) {
+                    setDialogState(() => selectedDate = picked);
+                  }
+                },
+                child: InputDecorator(
+                  decoration: InputDecoration(
+                    labelText: 'Date',
+                    prefixIcon: Icon(Icons.calendar_today_rounded,
+                        size: 20,
+                        color: Theme.of(ctx)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.5)),
+                  ),
+                  child: Text(
+                    selectedDate != null
+                        ? '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}'
+                        : 'Tap to select date',
+                    style: TextStyle(
+                      color: selectedDate != null
+                          ? Theme.of(ctx).colorScheme.onSurface
+                          : Theme.of(ctx)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.5),
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              AppTextField(
+                label: 'Reason (optional)',
+                controller: reasonCtrl,
+                maxLines: 2,
+                prefixIcon: Icons.notes_rounded,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (selectedDate == null) {
+                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(
+                    content: Text('Please select a date'),
+                    behavior: SnackBarBehavior.floating,
+                  ));
+                  return;
+                }
+                try {
+                  final dateStr =
+                      '${selectedDate!.year}-${selectedDate!.month.toString().padLeft(2, '0')}-${selectedDate!.day.toString().padLeft(2, '0')}';
+                  await ApiService().cancelLecture(
+                    slotId: slot['id'],
+                    date: dateStr,
+                    reason: reasonCtrl.text.trim().isEmpty
+                        ? null
+                        : reasonCtrl.text.trim(),
+                  );
+                  Navigator.pop(ctx);
+                  _showSnack('Lecture cancelled');
+                } catch (e) {
+                  _showSnack(e.toString(), isError: true);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(AppColors.error),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Cancel Lecture'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -343,7 +448,20 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
                     : Column(
                         children: _slots.map((slot) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),
-                          child: AppCard(
+                          child: GestureDetector(
+                            onLongPress: !_isAdvertising
+                                ? () => _showCancelDialog(slot)
+                                : null,
+                            child: AppCard(
+                            onTap: !_isAdvertising ? () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ClassAttendanceScreen(
+                                  slotId: slot['id'],
+                                  subjectName: '${slot['subject_name']} (${slot['subject_code'] ?? ''})',
+                                ),
+                              ),
+                            ) : null,
                             child: Row(
                               children: [
                                 Container(
@@ -419,6 +537,7 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
                                   ),
                               ],
                             ),
+                          ),
                           ),
                         )).toList(),
                       ),

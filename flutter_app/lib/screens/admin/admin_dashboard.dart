@@ -12,6 +12,7 @@ import 'admin_departments_screen.dart';
 import 'admin_timetable_screen.dart';
 import 'admin_reports_screen.dart';
 import 'admin_enrollment_screen.dart';
+import 'admin_events_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -196,6 +197,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 color: const Color(AppColors.hodColor),
                 onTap: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => const AdminReportsScreen())),
+              ),
+              const SizedBox(height: 10),
+              ActionCard(
+                icon: Icons.event_rounded,
+                title: 'Events & Holidays',
+                subtitle: 'Manage college events',
+                color: const Color(AppColors.holiday),
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const AdminEventsScreen())),
               ),
             ],
           ),

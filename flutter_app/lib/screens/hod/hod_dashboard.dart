@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
 import '../profile/profile_screen.dart';
+import '../admin/admin_events_screen.dart';
 
 class HodDashboard extends StatefulWidget {
   const HodDashboard({super.key});
@@ -76,6 +77,12 @@ class _HodDashboardState extends State<HodDashboard>
         title: const Text(AppConfig.appName),
         actions: [
           IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData),
+          IconButton(
+            icon: const Icon(Icons.event_rounded),
+            onPressed: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => const AdminEventsScreen())),
+            tooltip: 'Events',
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: PopupMenuButton(

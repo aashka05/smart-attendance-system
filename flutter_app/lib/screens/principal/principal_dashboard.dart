@@ -7,6 +7,7 @@ import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
 import '../profile/profile_screen.dart';
+import '../admin/admin_events_screen.dart';
 
 class PrincipalDashboard extends StatefulWidget {
   const PrincipalDashboard({super.key});
@@ -152,6 +153,16 @@ class _PrincipalDashboardState extends State<PrincipalDashboard> {
                       ),
                     ),
                     const SizedBox(height: 24),
+
+                    ActionCard(
+                      icon: Icons.event_rounded,
+                      title: 'Events & Holidays',
+                      subtitle: 'Manage college events',
+                      color: const Color(AppColors.holiday),
+                      onTap: () => Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const AdminEventsScreen())),
+                    ),
+                    const SizedBox(height: 14),
 
                     // Department breakdown
                     if (_deptStats.isNotEmpty) ...[
