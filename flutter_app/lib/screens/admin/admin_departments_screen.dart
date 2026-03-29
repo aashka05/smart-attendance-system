@@ -46,7 +46,9 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? const Color(AppColors.error) : const Color(AppColors.success),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
   }
 
@@ -55,12 +57,15 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Add Department'),
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'Department name', border: OutlineInputBorder()),
+          decoration: const InputDecoration(
+            hintText: 'Department name',
+            border: OutlineInputBorder(),
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
@@ -96,7 +101,7 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: const Text('Add Subject'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -115,7 +120,7 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
                 value: selectedDeptId,
                 decoration: const InputDecoration(labelText: 'Department', border: OutlineInputBorder()),
                 items: _departments.map<DropdownMenuItem<String>>((d) =>
-                  DropdownMenuItem(value: d['id'] as String, child: Text(d['name'] as String))
+                    DropdownMenuItem(value: d['id'] as String, child: Text(d['name'] as String))
                 ).toList(),
                 onChanged: (v) => setModalState(() => selectedDeptId = v),
               ),
@@ -150,20 +155,11 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(AppColors.surface),
       appBar: AppBar(
-        title: const Text('Departments & Subjects', style: TextStyle(fontWeight: FontWeight.w700)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0,
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
-        ],
+        title: const Text('Departments & Subjects'),
+        actions: [IconButton(icon: const Icon(Icons.refresh_rounded), onPressed: _loadData)],
         bottom: TabBar(
           controller: _tabController,
-          labelColor: const Color(AppColors.primary),
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: const Color(AppColors.primary),
           tabs: [
             Tab(text: 'Departments (${_departments.length})'),
             Tab(text: 'Subjects (${_subjects.length})'),
@@ -176,7 +172,7 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
           else _showAddSubjectDialog();
         },
         backgroundColor: const Color(AppColors.primary),
-        child: const Icon(Icons.add, color: Colors.white),
+        child: const Icon(Icons.add_rounded, color: Colors.white),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -189,7 +185,15 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
 
   Widget _buildDepartments() {
     if (_departments.isEmpty) {
-      return _EmptyState(message: 'No departments yet', icon: Icons.business_outlined, onAdd: _showAddDepartmentDialog);
+      return EmptyState(
+        icon: Icons.business_rounded,
+        title: 'No departments yet',
+        action: TextButton.icon(
+          onPressed: _showAddDepartmentDialog,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Add Department'),
+        ),
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -197,60 +201,64 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
       itemBuilder: (_, i) {
         final dept = _departments[i];
         final subjectCount = _subjects.where((s) => s['department_id'] == dept['id']).length;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF137333).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: AppCard(
+            child: Row(
+              children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(AppColors.facultyColor).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.business_rounded,
+                      color: Color(AppColors.facultyColor), size: 22),
                 ),
-                child: const Icon(Icons.business_outlined, color: Color(0xFF137333), size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(dept['name'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                    Text('$subjectCount subjects', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                  ],
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(dept['name'],
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                      Text('$subjectCount subjects',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                            fontSize: 12,
+                          )),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                onPressed: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => AlertDialog(
-                      title: const Text('Delete Department?'),
-                      content: Text('This will delete "${dept['name']}". This cannot be undone.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text('Delete', style: TextStyle(color: Colors.white)),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirm == true) {
-                    await ApiService().deleteDepartment(dept['id']);
-                    _showSnack('Department deleted');
-                    await _loadData();
-                  }
-                },
-              ),
-            ],
+                IconButton(
+                  icon: Icon(Icons.delete_outline_rounded,
+                      color: const Color(AppColors.error).withOpacity(0.7), size: 20),
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        title: const Text('Delete Department?'),
+                        content: Text('Delete "${dept['name']}"? This cannot be undone.'),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(AppColors.error)),
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await ApiService().deleteDepartment(dept['id']);
+                      _showSnack('Department deleted');
+                      await _loadData();
+                    }
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -259,94 +267,82 @@ class _AdminDepartmentsScreenState extends State<AdminDepartmentsScreen>
 
   Widget _buildSubjects() {
     if (_subjects.isEmpty) {
-      return _EmptyState(message: 'No subjects yet', icon: Icons.book_outlined, onAdd: _showAddSubjectDialog);
+      return EmptyState(
+        icon: Icons.book_rounded,
+        title: 'No subjects yet',
+        action: TextButton.icon(
+          onPressed: _showAddSubjectDialog,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Add Subject'),
+        ),
+      );
     }
     return ListView.builder(
       padding: const EdgeInsets.all(16),
       itemCount: _subjects.length,
       itemBuilder: (_, i) {
         final subj = _subjects[i];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44, height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(AppColors.primary).withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: AppCard(
+            child: Row(
+              children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(AppColors.primary).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.book_rounded,
+                      color: Color(AppColors.primary), size: 22),
                 ),
-                child: const Icon(Icons.book_outlined, color: Color(AppColors.primary), size: 22),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(subj['name'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(4),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(subj['name'],
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(subj['code'],
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontFamily: 'monospace',
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                )),
                           ),
-                          child: Text(subj['code'], style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontFamily: 'monospace')),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(subj['department_name'] ?? '', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 8),
+                          Text(subj['department_name'] ?? '',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                fontSize: 12,
+                              )),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                onPressed: () async {
-                  await ApiService().deleteSubject(subj['id']);
-                  _showSnack('Subject deleted');
-                  await _loadData();
-                },
-              ),
-            ],
+                IconButton(
+                  icon: Icon(Icons.delete_outline_rounded,
+                      color: const Color(AppColors.error).withOpacity(0.7), size: 20),
+                  onPressed: () async {
+                    await ApiService().deleteSubject(subj['id']);
+                    _showSnack('Subject deleted');
+                    await _loadData();
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  final String message;
-  final IconData icon;
-  final VoidCallback onAdd;
-
-  const _EmptyState({required this.message, required this.icon, required this.onAdd});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 64, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
-          Text(message, style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
-          const SizedBox(height: 16),
-          TextButton.icon(
-            onPressed: onAdd,
-            icon: const Icon(Icons.add),
-            label: const Text('Add one now'),
-          ),
-        ],
-      ),
     );
   }
 }

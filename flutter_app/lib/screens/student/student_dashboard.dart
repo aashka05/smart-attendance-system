@@ -1,6 +1,6 @@
 // lib/screens/student/student_dashboard.dart
+
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +25,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   String _scanStatus = 'Tap "Scan" when your lecture starts';
   bool _isReporting = false;
   Map<String, dynamic>? _enrollmentStatus;
+
   StreamSubscription? _scanSub;
   StreamSubscription? _scanStateSub;
 
@@ -33,13 +34,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     super.initState();
     _loadSlots();
     _loadEnrollmentStatus();
-  }
-
-  Future<void> _loadEnrollmentStatus() async {
-    try {
-      final status = await ApiService().getEnrollmentStatus();
-      setState(() => _enrollmentStatus = status);
-    } catch (_) {}
   }
 
   @override
@@ -61,57 +55,68 @@ class _StudentDashboardState extends State<StudentDashboard> {
     setState(() => _loading = false);
   }
 
+  Future<void> _loadEnrollmentStatus() async {
+    try {
+      final status = await ApiService().getEnrollmentStatus();
+      setState(() => _enrollmentStatus = status);
+    } catch (_) {}
+  }
+
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? const Color(AppColors.error) : const Color(AppColors.success),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
   }
 
   Future<void> _startScanning() async {
-    print('=== BLE SCAN START ===');
-    final state = await FlutterBluePlus.adapterState.first;
-    print('Bluetooth state: $state');
-    bool isSupported = await FlutterBluePlus.isSupported;
-    print('BLE supported: $isSupported');
     setState(() {
       _isScanning = true;
       _detectedSignals.clear();
       _scanStatus = 'Scanning for nearby signals...';
     });
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: AppConfig.bleScanDuration));
+    print('=== BLE SCAN START ===');
+    final state = await FlutterBluePlus.adapterState.first;
+    print('Bluetooth state: $state');
+    bool isSupported = await FlutterBluePlus.isSupported;
+    print('BLE supported: $isSupported');
+
+    await FlutterBluePlus.startScan(
+      timeout: const Duration(seconds: AppConfig.bleScanDuration),
+      androidUsesFineLocation: false,
+    );
 
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
       if (!mounted) return;
-        for (ScanResult r in results) {
-          final mfrData = r.advertisementData.manufacturerData;
-          if (r.advertisementData.manufacturerData.isNotEmpty) {
-            print('Device: ${r.device.remoteId}');
-            print('Manufacturer data: ${r.advertisementData.manufacturerData}');
-          }
-          if (mfrData.containsKey(0x4154)) {
-            final data = mfrData[0x4154]!;
-            final token = String.fromCharCodes(data);
-            final rssi = r.rssi;
-            final exists = _detectedSignals.any((s) => s['token'] == token);
-            if (!exists) {
-              setState(() {
-                _detectedSignals.add({
-                  'token': token,
-                  'rssi': rssi,
-                  'reported': false,
-                });
-                _scanStatus = '${_detectedSignals.length} signal(s) detected';
-              });
-            }
+      for (ScanResult r in results) {
+        if (r.advertisementData.manufacturerData.isNotEmpty) {
+          print('Device: ${r.device.remoteId}');
+          r.advertisementData.manufacturerData.forEach((id, data) {
+            print('Manufacturer ID: $id, Data: $data');
+          });
+        }
+        final mfrData = r.advertisementData.manufacturerData;
+        if (mfrData.containsKey(0x4154)) {
+          final data = mfrData[0x4154]!;
+          final token = String.fromCharCodes(data);
+          final rssi = r.rssi;
+          final exists = _detectedSignals.any((s) => s['token'] == token);
+          if (!exists) {
+            setState(() {
+              _detectedSignals.add({'token': token, 'rssi': rssi, 'reported': false});
+              _scanStatus = '${_detectedSignals.length} signal(s) detected';
+            });
           }
         }
+      }
     });
 
     _scanStateSub = FlutterBluePlus.isScanning.listen((scanning) {
-      if (!mounted) return;  // ← ADD THIS
-      if (!scanning && mounted) {
+      if (!mounted) return;
+      if (!scanning) {
         setState(() {
           _isScanning = false;
           _scanStatus = _detectedSignals.isEmpty
@@ -136,9 +141,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
         timestamp: DateTime.now().toIso8601String(),
       );
 
-      print('Token being sent: ${signal['token']}');
-      print('Session ID returned: ${result['session_id']}');
+      print('Token: ${signal['token']}');
+      print('Session ID: ${result['session_id']}');
       print('Token valid: ${result['token_valid']}');
+      print('Session found: ${result['session_found']}');
 
       setState(() => signal['reported'] = true);
 
@@ -147,13 +153,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
       final sessionId = result['session_id'] as String?;
 
       if (tokenValid && sessionFound && sessionId != null) {
-        // Check enrollment status
         final enrollStatus = _enrollmentStatus?['status'];
         if (enrollStatus != 'approved') {
           _showEnrollmentDialog();
           return;
         }
-        // Navigate to face scan
         if (mounted) {
           Navigator.push(context, MaterialPageRoute(
             builder: (_) => FaceScanScreen(
@@ -163,7 +167,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
             ),
           ));
         }
-        
       } else {
         _showSnack('⚠️ Signal found but no matching active session', isError: true);
       }
@@ -180,11 +183,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
     VoidCallback? onPressed;
 
     if (status == 'pending') {
-      message = 'Your face enrollment is pending admin approval. You cannot mark attendance until approved.';
+      message = 'Your face enrollment is pending admin approval.';
       buttonText = 'OK';
       onPressed = () => Navigator.pop(context);
     } else if (status == 'rejected') {
-      message = 'Your face enrollment was rejected. Please re-enroll with a clear photo.';
+      message = 'Your face enrollment was rejected. Please re-enroll.';
       buttonText = 'Re-enroll';
       onPressed = () {
         Navigator.pop(context);
@@ -206,11 +209,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Face Enrollment Required'),
         content: Text(message),
         actions: [
-          TextButton(onPressed: onPressed, child: Text(buttonText)),
+          ElevatedButton(onPressed: onPressed, child: Text(buttonText)),
         ],
       ),
     );
@@ -221,27 +224,30 @@ class _StudentDashboardState extends State<StudentDashboard> {
     final user = context.watch<AuthProvider>().user!;
 
     return Scaffold(
-      backgroundColor: const Color(AppColors.surface),
       appBar: AppBar(
-        title: Text(AppConfig.appName, style: const TextStyle(fontWeight: FontWeight.w800)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0,
+        title: const Text(AppConfig.appName),
         actions: [
-          PopupMenuButton(
-            icon: const CircleAvatar(
-              radius: 16,
-              backgroundColor: Color(AppColors.primary),
-              child: Icon(Icons.person, color: Colors.white, size: 18),
-            ),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                child: const Row(children: [Icon(Icons.logout, size: 18), SizedBox(width: 8), Text('Sign Out')]),
-                onTap: () => context.read<AuthProvider>().logout(),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: PopupMenuButton(
+              icon: CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(AppColors.studentColor).withOpacity(0.15),
+                child: const Icon(Icons.person_rounded,
+                    color: Color(AppColors.studentColor), size: 18),
               ),
-            ],
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  child: const Row(children: [
+                    Icon(Icons.logout_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('Sign Out'),
+                  ]),
+                  onTap: () => context.read<AuthProvider>().logout(),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -249,14 +255,20 @@ class _StudentDashboardState extends State<StudentDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Welcome
-            Text('Hello, ${user.fullName.split(' ').first} 👋',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-            Text('Student • ${user.departmentName ?? 'No Department'} • ${user.enrollmentNumber ?? ''}',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-            const SizedBox(height: 24),
+            Text(
+              'Hello, ${user.fullName.split(' ').first} 👋',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+            ),
+            Text(
+              '${user.departmentName ?? 'No Department'}${user.year != null ? ' • Year ${user.year}' : ''} • ${user.enrollmentNumber ?? ''}',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 12),
 
-            // Enrollment status banner
+            // Enrollment banner
             if (_enrollmentStatus != null && _enrollmentStatus!['status'] != 'approved') ...[
               GestureDetector(
                 onTap: () => Navigator.push(context, MaterialPageRoute(
@@ -265,86 +277,91 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 child: Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF3E0),
+                    color: const Color(AppColors.warning).withOpacity(0.08),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFE65100).withOpacity(0.3)),
+                    border: Border.all(color: const Color(AppColors.warning).withOpacity(0.2)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.face, color: Color(0xFFE65100), size: 20),
+                      const Icon(Icons.face_rounded, color: Color(AppColors.warning), size: 20),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           _enrollmentStatus!['status'] == 'pending'
                               ? 'Face enrollment pending approval'
                               : 'Face enrollment required — tap to enroll',
-                          style: const TextStyle(color: Color(0xFFE65100), fontSize: 13),
+                          style: const TextStyle(color: Color(AppColors.warning), fontSize: 13),
                         ),
                       ),
-                      const Icon(Icons.chevron_right, color: Color(0xFFE65100), size: 18),
+                      const Icon(Icons.chevron_right_rounded,
+                          color: Color(AppColors.warning), size: 18),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 14),
             ],
 
-            const SizedBox(height: 12),
-
-            // BLE Scanner Card
+            // BLE Scanner
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: _isScanning
-                      ? [const Color(AppColors.primary), const Color(0xFF0D47A1)]
-                      : [Colors.grey.shade700, Colors.grey.shade800],
+                      ? [const Color(AppColors.primary), const Color(0xFF0031CA)]
+                      : [const Color(0xFF334155), const Color(0xFF1E293B)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Column(
                 children: [
-                  // Animated bluetooth icon
                   Container(
-                    width: 60, height: 60,
+                    width: 56, height: 56,
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.15),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      _isScanning ? Icons.bluetooth_searching : Icons.bluetooth,
+                      _isScanning ? Icons.bluetooth_searching_rounded : Icons.bluetooth_rounded,
                       color: Colors.white,
-                      size: 30,
+                      size: 28,
                     ),
                   ),
                   const SizedBox(height: 12),
                   Text(
                     _isScanning ? 'Scanning...' : 'BLE Scanner',
-                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 6),
-                  Text(_scanStatus,
-                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
-                      textAlign: TextAlign.center),
+                  Text(
+                    _scanStatus,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 13,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _isScanning ? _stopScanning : _startScanning,
-                          icon: Icon(_isScanning ? Icons.stop : Icons.search, size: 18),
-                          label: Text(_isScanning ? 'Stop' : 'Scan'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: const Color(AppColors.primary),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          ),
-                        ),
-                      ),
-                    ],
+                  ElevatedButton.icon(
+                    onPressed: _isScanning ? _stopScanning : _startScanning,
+                    icon: Icon(
+                      _isScanning ? Icons.stop_rounded : Icons.search_rounded,
+                      size: 18,
+                    ),
+                    label: Text(_isScanning ? 'Stop' : 'Scan'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(AppColors.primary),
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
                   ),
                 ],
               ),
@@ -353,152 +370,163 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
             // Detected signals
             if (_detectedSignals.isNotEmpty) ...[
-              SectionHeader(title: 'Detected Signals', subtitle: 'Tap to mark your attendance'),
+              const SectionHeader(
+                title: 'Detected Signals',
+                subtitle: 'Tap Mark to proceed',
+              ),
               const SizedBox(height: 12),
-              ..._detectedSignals.map((signal) => _SignalCard(
-                signal: signal,
-                isReporting: _isReporting,
-                onReport: signal['reported'] ? null : () => _reportSignal(signal),
-              )),
+              ..._detectedSignals.map((signal) {
+                final reported = signal['reported'] as bool;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: AppCard(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 42, height: 42,
+                          decoration: BoxDecoration(
+                            color: reported
+                                ? const Color(AppColors.success).withOpacity(0.1)
+                                : const Color(AppColors.primary).withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            reported ? Icons.check_circle_rounded : Icons.bluetooth_rounded,
+                            color: reported
+                                ? const Color(AppColors.success)
+                                : const Color(AppColors.primary),
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                signal['token'],
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                  fontFamily: 'monospace',
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                ),
+                              ),
+                              Text(
+                                'Signal: ${signal['rssi']} dBm',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!reported)
+                          ElevatedButton(
+                            onPressed: _isReporting ? null : () => _reportSignal(signal),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(AppColors.primary),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                            child: _isReporting
+                                ? const SizedBox(
+                                    width: 16, height: 16,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                : const Text('Mark', style: TextStyle(fontSize: 13)),
+                          )
+                        else
+                          Text(
+                            'Reported ✓',
+                            style: TextStyle(
+                              color: const Color(AppColors.success),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
               const SizedBox(height: 20),
             ],
 
-            // Timetable
+            // Schedule
             SectionHeader(
-              title: "My Schedule",
+              title: 'My Schedule',
               subtitle: "Today's lectures",
-              action: IconButton(icon: const Icon(Icons.refresh, size: 20), onPressed: _loadSlots),
+              action: IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                onPressed: _loadSlots,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _slots.isEmpty
-                    ? Center(
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 24),
-                            Icon(Icons.calendar_today, size: 64, color: Colors.grey.shade400),
-                            const SizedBox(height: 16),
-                            Text('No lectures scheduled', style: TextStyle(color: Colors.grey.shade600)),
-                          ],
-                        ),
+                    ? const EmptyState(
+                        icon: Icons.calendar_today_rounded,
+                        title: 'No lectures scheduled',
                       )
                     : Column(
-                        children: _slots.map((slot) => _ScheduleCard(slot: slot)).toList(),
+                        children: _slots.map((slot) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: AppCard(
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 4, height: 60,
+                                  decoration: BoxDecoration(
+                                    color: const Color(AppColors.primary),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              slot['subject_name'] ?? '',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w600, fontSize: 14),
+                                            ),
+                                          ),
+                                          LectureTypeBadge(type: slot['lecture_type'] ?? 'lecture'),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${slot['faculty_name']} • ${slot['room']}',
+                                        style: TextStyle(
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${slot['day_of_week']} ${slot['start_time']} – ${slot['end_time']}',
+                                        style: TextStyle(
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )).toList(),
                       ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SignalCard extends StatelessWidget {
-  final Map<String, dynamic> signal;
-  final bool isReporting;
-  final VoidCallback? onReport;
-
-  const _SignalCard({required this.signal, required this.isReporting, this.onReport});
-
-  @override
-  Widget build(BuildContext context) {
-    final reported = signal['reported'] as bool;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: reported ? const Color(0xFF137333) : const Color(AppColors.primary).withOpacity(0.3),
-        ),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: reported
-                  ? const Color(0xFFE6F4EA)
-                  : const Color(AppColors.primary).withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              reported ? Icons.check_circle : Icons.bluetooth,
-              color: reported ? const Color(0xFF137333) : const Color(AppColors.primary),
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(signal['token'], style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, fontFamily: 'monospace')),
-                Text('Signal strength: ${signal['rssi']} dBm',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-              ],
-            ),
-          ),
-          if (!reported)
-            ElevatedButton(
-              onPressed: isReporting ? null : onReport,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(AppColors.primary),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-              child: isReporting
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Mark', style: TextStyle(fontSize: 13)),
-            )
-          else
-            const Text('Reported ✓', style: TextStyle(color: Color(0xFF137333), fontSize: 12, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-}
-
-class _ScheduleCard extends StatelessWidget {
-  final Map<String, dynamic> slot;
-  const _ScheduleCard({required this.slot});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 4, height: 56,
-            decoration: BoxDecoration(
-              color: const Color(AppColors.primary),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(slot['subject_name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                Text('${slot['faculty_name']} • ${slot['room']}',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                Text('${slot['day_of_week']} ${slot['start_time']} – ${slot['end_time']}',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -23,7 +23,6 @@ class AuthProvider extends ChangeNotifier {
     if (savedUser != null && token != null) {
       _user = UserModel.fromJson(savedUser);
       notifyListeners();
-      // Refresh from server
       try {
         final fresh = await _api.getMe();
         _user = UserModel.fromJson(fresh);
@@ -37,7 +36,6 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = true;
     _error = null;
     notifyListeners();
-
     try {
       final data = await _api.login(email, password);
       _user = UserModel.fromJson(data['user']);
@@ -60,11 +58,11 @@ class AuthProvider extends ChangeNotifier {
     String? departmentId,
     String? enrollmentNumber,
     String? employeeId,
+    int? year,
   }) async {
     _isLoading = true;
     _error = null;
     notifyListeners();
-
     try {
       await _api.register(
         fullName: fullName,
@@ -74,6 +72,7 @@ class AuthProvider extends ChangeNotifier {
         departmentId: departmentId,
         enrollmentNumber: enrollmentNumber,
         employeeId: employeeId,
+        year: year,
       );
       _isLoading = false;
       notifyListeners();

@@ -3,11 +3,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import '../../services/api_service.dart';
 import '../../config.dart';
-import 'package:flutter/foundation.dart';
 
 class FaceScanScreen extends StatefulWidget {
   final String sessionId;
@@ -29,30 +29,25 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
   CameraController? _cameraController;
   FaceDetector? _faceDetector;
 
-  // Challenge state
   String _challengeId = '';
   String _challenge = '';
   String _instruction = '';
   bool _challengeLoaded = false;
-
-  // Detection state
   bool _isProcessing = false;
   bool _challengeComplete = false;
   bool _isSubmitting = false;
   String _status = 'Preparing camera...';
   String _capturedImageB64 = '';
 
-  // Liveness tracking
   int _blinkCount = 0;
   bool _eyesWereClosed = false;
   bool _headTurnedLeft = false;
   bool _headTurnedRight = false;
   bool _smileDetected = false;
-
-  // Attempts tracking
   int _attempts = 0;
   static const int maxAttempts = 3;
 
+  DateTime _lastProcessed = DateTime.now();
   Timer? _processingTimer;
 
   @override
@@ -81,21 +76,16 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       setState(() => _status = 'No camera available');
       return;
     }
-
     final frontCamera = cameras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.front,
       orElse: () => cameras.first,
     );
-
     _cameraController = CameraController(
-      frontCamera,
-      ResolutionPreset.low,     // ← change to low
+      frontCamera, ResolutionPreset.low,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,  // ← change to yuv420
+      imageFormatGroup: ImageFormatGroup.yuv420,
     );
-
     await _cameraController!.initialize();
-
     _faceDetector = FaceDetector(
       options: FaceDetectorOptions(
         enableClassification: true,
@@ -105,16 +95,13 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
         performanceMode: FaceDetectorMode.fast,
       ),
     );
-
     setState(() => _status = 'Camera ready');
     _cameraController!.startImageStream(_processCameraImage);
   }
 
   Future<void> _loadChallenge() async {
     try {
-      final result = await ApiService().getLivenessChallenge(
-        sessionId: widget.sessionId,
-      );
+      final result = await ApiService().getLivenessChallenge(sessionId: widget.sessionId);
       setState(() {
         _challengeId = result['challenge_id'];
         _challenge = result['challenge'];
@@ -127,10 +114,7 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
     }
   }
 
-  DateTime _lastProcessed = DateTime.now();
-
   Future<void> _processCameraImage(CameraImage image) async {
-    // Throttle — only process every 200ms
     final now = DateTime.now();
     if (now.difference(_lastProcessed).inMilliseconds < 200) return;
     _lastProcessed = now;
@@ -147,37 +131,32 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
         return;
       }
 
+      print('Processing image: ${image.width}x${image.height}');
       final faces = await _faceDetector!.processImage(inputImage);
+      print('Faces detected: ${faces.length}');
 
-      if (!mounted) {
-        _isProcessing = false;
-        return;
-      }
+      if (!mounted) { _isProcessing = false; return; }
 
       if (faces.isEmpty) {
-        setState(() => _status = 'No face detected. Position your face in the frame.');
+        setState(() => _status = 'No face detected. Position your face.');
         _isProcessing = false;
         return;
       }
 
       final face = faces.first;
       _checkLiveness(face);
-
     } catch (e) {
       print('Face detection error: $e');
     }
-
     _isProcessing = false;
   }
 
   InputImage? _buildInputImage(CameraImage image) {
     if (_cameraController == null) return null;
-
     final camera = _cameraController!.description;
     final rotation = InputImageRotationValue.fromRawValue(camera.sensorOrientation);
     if (rotation == null) return null;
 
-    // Concatenate all planes for NV21/YUV
     final WriteBuffer allBytes = WriteBuffer();
     for (final plane in image.planes) {
       allBytes.putUint8List(plane.bytes);
@@ -195,19 +174,13 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
     );
   }
 
-    void _checkLiveness(Face face) {
-      switch (_challenge) {
-        case 'blink':
-          _checkBlink(face);
-          break;
-        case 'turn_head':
-          _checkHeadTurn(face);
-          break;
-        case 'smile':
-          _checkSmile(face);
-          break;
-      }
+  void _checkLiveness(Face face) {
+    switch (_challenge) {
+      case 'blink': _checkBlink(face); break;
+      case 'turn_head': _checkHeadTurn(face); break;
+      case 'smile': _checkSmile(face); break;
     }
+  }
 
   void _checkBlink(Face face) {
     final leftEye = face.leftEyeOpenProbability ?? 1.0;
@@ -221,22 +194,17 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       _eyesWereClosed = false;
       _blinkCount++;
       setState(() => _status = 'Blink $_blinkCount/2 detected!');
-
-      if (_blinkCount >= 2) {
-        _onChallengeComplete(face);
-      }
+      if (_blinkCount >= 2) _onChallengeComplete(face);
     }
   }
 
   void _checkHeadTurn(Face face) {
     final yAngle = face.headEulerAngleY ?? 0;
-    print('Head Y angle: $yAngle, TurnedLeft: $_headTurnedLeft, TurnedRight: $_headTurnedRight');
-
+    print('Head Y angle: $yAngle');
     if (yAngle < -20 && !_headTurnedLeft) {
       _headTurnedLeft = true;
       setState(() => _status = 'Left ✅ Now turn right');
     }
-
     if (_headTurnedLeft && yAngle > 20 && !_headTurnedRight) {
       _headTurnedRight = true;
       _onChallengeComplete(face);
@@ -245,7 +213,7 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
 
   void _checkSmile(Face face) {
     final smileProb = face.smilingProbability ?? 0.0;
-    print('Smile probability: $smileProb'); 
+    print('Smile probability: $smileProb');
     if (smileProb > 0.7 && !_smileDetected) {
       _smileDetected = true;
       _onChallengeComplete(face);
@@ -258,40 +226,28 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       _challengeComplete = true;
       _status = 'Challenge complete! Capturing face...';
     });
-
-    // Stop image stream
     await _cameraController?.stopImageStream();
-
-    // Capture the photo
     await _captureAndSubmit();
   }
 
   Future<void> _captureAndSubmit() async {
     setState(() => _isSubmitting = true);
-
     try {
-      // Take picture
       final XFile photo = await _cameraController!.takePicture();
       final bytes = await photo.readAsBytes();
       _capturedImageB64 = base64Encode(bytes);
-
       setState(() => _status = 'Verifying face...');
-
-      // Submit to server
       final result = await ApiService().verifyFace(
         sessionId: widget.sessionId,
         token: widget.token,
         faceImageB64: _capturedImageB64,
         challengeId: _challengeId,
       );
-
-      if (mounted) {
-        _showResult(true, result['message'] ?? 'Attendance marked!');
-      }
+      if (mounted) _showResult(true, result['message'] ?? 'Attendance marked!');
     } catch (e) {
       _attempts++;
       if (_attempts >= maxAttempts) {
-        if (mounted) _showResult(false, 'Maximum attempts reached. Marked absent.');
+        if (mounted) _showResult(false, 'Maximum attempts reached.');
       } else {
         setState(() {
           _challengeComplete = false;
@@ -303,7 +259,6 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
           _status = 'Attempt $_attempts/$maxAttempts failed. Try again: $_instruction';
           _isSubmitting = false;
         });
-        // Restart image stream
         _cameraController?.startImageStream(_processCameraImage);
       }
     }
@@ -314,19 +269,20 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               width: 72, height: 72,
               decoration: BoxDecoration(
-                color: success ? const Color(0xFFE6F4EA) : const Color(0xFFFCE8E6),
+                color: (success ? const Color(AppColors.success) : const Color(AppColors.error))
+                    .withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                success ? Icons.check_circle : Icons.cancel,
-                color: success ? const Color(0xFF137333) : const Color(0xFFEA4335),
+                success ? Icons.check_circle_rounded : Icons.cancel_rounded,
+                color: success ? const Color(AppColors.success) : const Color(AppColors.error),
                 size: 40,
               ),
             ),
@@ -339,17 +295,23 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                fontSize: 13,
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // close dialog
-              Navigator.pop(context); // go back to dashboard
-            },
-            child: const Text('Done'),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pop(context);
+              },
+              child: const Text('Done'),
+            ),
           ),
         ],
       ),
@@ -362,7 +324,7 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       backgroundColor: Colors.black,
       appBar: AppBar(
         title: Text(widget.subjectName,
-            style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white)),
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         elevation: 0,
@@ -370,18 +332,15 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            // Camera preview
             if (_cameraController != null && _cameraController!.value.isInitialized)
               Center(child: CameraPreview(_cameraController!)),
 
-            // Face oval guide
             Center(
               child: Container(
-                width: 220,
-                height: 280,
+                width: 220, height: 280,
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: _challengeComplete ? Colors.green : Colors.white,
+                    color: _challengeComplete ? const Color(AppColors.success) : Colors.white,
                     width: 2,
                   ),
                   borderRadius: BorderRadius.circular(140),
@@ -389,10 +348,8 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
               ),
             ),
 
-            // Status + instruction
             Positioned(
-              top: 16,
-              left: 16, right: 16,
+              top: 16, left: 16, right: 16,
               child: Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
@@ -401,33 +358,25 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
                 ),
                 child: Column(
                   children: [
-                    Text(
-                      widget.subjectName,
-                      style: const TextStyle(
-                          color: Colors.white70, fontSize: 12),
-                    ),
+                    Text(widget.subjectName,
+                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
                     const SizedBox(height: 6),
                     Text(
                       _status,
                       style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600),
+                        color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
                       textAlign: TextAlign.center,
                     ),
                     if (_attempts > 0) ...[
                       const SizedBox(height: 4),
-                      Text(
-                        'Attempt $_attempts/$maxAttempts',
-                        style: const TextStyle(color: Colors.orange, fontSize: 12),
-                      ),
+                      Text('Attempt $_attempts/$maxAttempts',
+                          style: const TextStyle(color: Colors.orange, fontSize: 12)),
                     ],
                   ],
                 ),
               ),
             ),
 
-            // Loading overlay when submitting
             if (_isSubmitting)
               Container(
                 color: Colors.black54,
@@ -443,11 +392,9 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
                 ),
               ),
 
-            // Challenge indicator bottom
             if (_challengeLoaded)
               Positioned(
-                bottom: 40,
-                left: 16, right: 16,
+                bottom: 40, left: 16, right: 16,
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
@@ -457,16 +404,10 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        _getChallengeIcon(),
-                        color: Colors.white,
-                        size: 20,
-                      ),
+                      Icon(_getChallengeIcon(), color: Colors.white, size: 20),
                       const SizedBox(width: 8),
-                      Text(
-                        _instruction,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                      ),
+                      Text(_instruction,
+                          style: const TextStyle(color: Colors.white, fontSize: 14)),
                     ],
                   ),
                 ),
@@ -479,10 +420,10 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
 
   IconData _getChallengeIcon() {
     switch (_challenge) {
-      case 'blink': return Icons.visibility;
-      case 'turn_head': return Icons.rotate_90_degrees_ccw;
-      case 'smile': return Icons.sentiment_satisfied_alt;
-      default: return Icons.face;
+      case 'blink': return Icons.visibility_rounded;
+      case 'turn_head': return Icons.rotate_90_degrees_ccw_rounded;
+      case 'smile': return Icons.sentiment_satisfied_alt_rounded;
+      default: return Icons.face_rounded;
     }
   }
 }

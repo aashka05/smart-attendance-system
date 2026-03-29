@@ -1,16 +1,14 @@
 // lib/screens/faculty/faculty_dashboard.dart
 
 import 'dart:async';
-//import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
-import 'dart:typed_data';
-import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 
 class FacultyDashboard extends StatefulWidget {
   const FacultyDashboard({super.key});
@@ -55,7 +53,9 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
   void _showSnack(String msg, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(msg),
-      backgroundColor: isError ? Colors.red : Colors.green,
+      backgroundColor: isError ? const Color(AppColors.error) : const Color(AppColors.success),
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
   }
 
@@ -74,12 +74,10 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
 
       await _startBleAdvertising(token);
 
-      // Timer to update countdown
       _tokenTimer?.cancel();
       _tokenTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         setState(() => _secondsRemaining--);
         if (_secondsRemaining <= 0) {
-          // Token refreshed server-side automatically, restart advertising
           _refreshToken(slot['id']);
         }
       });
@@ -98,7 +96,7 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
         _activeToken = newToken;
         _secondsRemaining = 300;
       });
-      await FlutterBlePeripheral().stop();
+      await _stopAdvertising();
       await _startBleAdvertising(newToken);
     } catch (_) {}
   }
@@ -108,22 +106,32 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
       final peripheral = FlutterBlePeripheral();
       bool isSupported = await peripheral.isSupported;
       print('BLE Peripheral supported: $isSupported');
-      _showSnack('BLE supported: $isSupported');
-      
+
       if (!isSupported) {
         _showSnack('BLE peripheral NOT supported on this device', isError: true);
         setState(() => _isAdvertising = true);
         return;
       }
 
+      final data = Uint8List.fromList(token.codeUnits);
       final advertiseData = AdvertiseData(
         serviceUuid: '00004154-0000-1000-8000-00805F9B34FB',
         manufacturerId: 0x4154,
-        manufacturerData: Uint8List.fromList(token.codeUnits),
+        manufacturerData: data,
       );
-      await peripheral.start(advertiseData: advertiseData);
+
+      final advertiseSettings = AdvertiseSettings(
+        advertiseMode: AdvertiseMode.advertiseModeBalanced,
+        txPowerLevel: AdvertiseTxPower.advertiseTxPowerHigh,
+        connectable: false,
+        timeout: 0,
+      );
+
+      await peripheral.start(
+        advertiseData: advertiseData,
+        advertiseSettings: advertiseSettings,
+      );
       print('=== BLE ADVERTISING STARTED: $token ===');
-      _showSnack('Broadcasting: $token');
       setState(() => _isAdvertising = true);
     } catch (e) {
       print('=== BLE ADVERTISING ERROR: $e ===');
@@ -168,27 +176,30 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
     final user = context.watch<AuthProvider>().user!;
 
     return Scaffold(
-      backgroundColor: const Color(AppColors.surface),
       appBar: AppBar(
-        title: Text(AppConfig.appName, style: const TextStyle(fontWeight: FontWeight.w800)),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
-        elevation: 0,
+        title: const Text(AppConfig.appName),
         actions: [
-          PopupMenuButton(
-            icon: const CircleAvatar(
-              radius: 16,
-              backgroundColor: Color(0xFF137333),
-              child: Icon(Icons.person, color: Colors.white, size: 18),
-            ),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                child: const Row(children: [Icon(Icons.logout, size: 18), SizedBox(width: 8), Text('Sign Out')]),
-                onTap: () => context.read<AuthProvider>().logout(),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: PopupMenuButton(
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(AppColors.facultyColor).withOpacity(0.15),
+                child: const Icon(Icons.person_rounded,
+                    color: Color(AppColors.facultyColor), size: 18),
               ),
-            ],
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  child: const Row(children: [
+                    Icon(Icons.logout_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('Sign Out'),
+                  ]),
+                  onTap: () => context.read<AuthProvider>().logout(),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 8),
         ],
       ),
       body: SingleChildScrollView(
@@ -196,35 +207,48 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Welcome
-            Text('Hello, ${user.fullName.split(' ').first} 👋',
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
-            Text('Faculty • ${user.departmentName ?? 'No Department'}',
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+            Text(
+              'Hello, ${user.fullName.split(' ').first} 👋',
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+            ),
+            Text(
+              'Faculty • ${user.departmentName ?? 'No Department'}',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                fontSize: 14,
+              ),
+            ),
             const SizedBox(height: 24),
 
-            // Active Session Banner
+            // Active session banner
             if (_isAdvertising && _activeToken != null) ...[
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                    colors: [Color(0xFF137333), Color(0xFF0D5A2B)],
+                    colors: [Color(AppColors.facultyColor), Color(0xFF059669)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(20),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.bluetooth_audio, color: Colors.white, size: 20),
+                        const Icon(Icons.bluetooth_audio_rounded,
+                            color: Colors.white, size: 18),
                         const SizedBox(width: 8),
-                        Text(_activeSlotName ?? 'Attendance Live',
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700)),
+                        Text(
+                          _activeSlotName ?? 'Attendance Live',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         const Spacer(),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -235,43 +259,47 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.circle, color: Colors.greenAccent, size: 8),
-                              SizedBox(width: 4),
-                              Text('LIVE', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                              Icon(Icons.circle, color: Colors.greenAccent, size: 7),
+                              SizedBox(width: 5),
+                              Text('LIVE',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  )),
                             ],
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Text('Broadcasting BLE Signal',
-                        style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+                    Text(
+                      'Token refreshes in',
+                      style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11),
+                    ),
                     const SizedBox(height: 4),
-                    Text(_activeToken ?? '',
-                        style: const TextStyle(color: Colors.white, fontSize: 14,
-                            fontFamily: 'monospace', fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 16),
                     Row(
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Token refreshes in',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11)),
-                              Text(_formattedTime,
-                                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                            ],
+                        Text(
+                          _formattedTime,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
                           ),
                         ),
+                        const Spacer(),
                         ElevatedButton.icon(
                           onPressed: _stopAttendance,
-                          icon: const Icon(Icons.stop, size: 18),
+                          icon: const Icon(Icons.stop_rounded, size: 18),
                           label: const Text('Stop'),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.white,
-                            foregroundColor: const Color(0xFF137333),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            foregroundColor: const Color(AppColors.facultyColor),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
                       ],
@@ -284,103 +312,107 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
 
             // Timetable
             SectionHeader(
-              title: "My Timetable",
-              subtitle: "Tap a slot to start attendance",
-              action: IconButton(icon: const Icon(Icons.refresh, size: 20), onPressed: _loadSlots),
+              title: 'My Schedule',
+              subtitle: 'Tap a slot to start attendance',
+              action: IconButton(
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+                onPressed: _loadSlots,
+              ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
 
             _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _slots.isEmpty
-                    ? Center(
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 40),
-                            Icon(Icons.calendar_today, size: 64, color: Colors.grey.shade400),
-                            const SizedBox(height: 16),
-                            Text('No slots assigned yet', style: TextStyle(color: Colors.grey.shade600)),
-                            Text('Contact admin to add timetable slots',
-                                style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-                          ],
-                        ),
+                    ? EmptyState(
+                        icon: Icons.calendar_today_rounded,
+                        title: 'No slots assigned yet',
+                        subtitle: 'Contact admin to add timetable slots',
                       )
                     : Column(
-                        children: _slots.map((slot) => _SlotCard(
-                          slot: slot,
-                          isActive: _activeSessionId != null,
-                          onStart: _isAdvertising ? null : () => _startAttendance(slot),
+                        children: _slots.map((slot) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: AppCard(
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 4, height: 70,
+                                  decoration: BoxDecoration(
+                                    color: const Color(AppColors.facultyColor),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              '${slot['subject_name']} (${slot['subject_code'] ?? ''})',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w700, fontSize: 14),
+                                            ),
+                                          ),
+                                          LectureTypeBadge(type: slot['lecture_type'] ?? 'lecture'),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${slot['room']}${slot['year'] != null ? ' • Year ${slot['year']}' : ''}${slot['batch'] != null ? ' • Batch ${slot['batch']}' : ''}',
+                                        style: TextStyle(
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${slot['day_of_week']} ${slot['start_time']} – ${slot['end_time']}',
+                                        style: TextStyle(
+                                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                if (!_isAdvertising)
+                                  ElevatedButton(
+                                    onPressed: () => _startAttendance(slot),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(AppColors.facultyColor),
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                    child: const Text('Start', style: TextStyle(fontSize: 13)),
+                                  )
+                                else
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.06),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      'Busy',
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
                         )).toList(),
                       ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SlotCard extends StatelessWidget {
-  final Map<String, dynamic> slot;
-  final bool isActive;
-  final VoidCallback? onStart;
-
-  const _SlotCard({required this.slot, required this.isActive, this.onStart});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8)],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 4, height: 64,
-            decoration: BoxDecoration(
-              color: const Color(0xFF137333),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${slot['subject_name']} (${slot['subject_code'] ?? ''})',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                const SizedBox(height: 4),
-                Text('${slot['section']} • ${slot['room']}',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                Text('${slot['day_of_week']} ${slot['start_time']} – ${slot['end_time']}',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-              ],
-            ),
-          ),
-          if (onStart != null)
-            ElevatedButton(
-              onPressed: onStart,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF137333),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Start', style: TextStyle(fontSize: 13)),
-            )
-          else if (isActive)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Text('Busy', style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
-            ),
-        ],
       ),
     );
   }

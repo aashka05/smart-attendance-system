@@ -4,13 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/auth_provider.dart';
+import 'services/theme_provider.dart';
+import 'theme.dart';
 import 'config.dart';
 
-// Auth screens
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/pending_screen.dart';
-
-// Role dashboards
 import 'screens/admin/admin_dashboard.dart';
 import 'screens/faculty/faculty_dashboard.dart';
 import 'screens/student/student_dashboard.dart';
@@ -20,8 +19,11 @@ import 'screens/principal/principal_dashboard.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => AuthProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+      ],
       child: const AttendanceApp(),
     ),
   );
@@ -32,15 +34,13 @@ class AttendanceApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeProvider = context.watch<ThemeProvider>();
     return MaterialApp(
       title: AppConfig.appName,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(AppColors.primary)),
-        textTheme: GoogleFonts.interTextTheme(),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(AppColors.surface),
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: themeProvider.themeMode,
       home: const SplashRouter(),
     );
   }
@@ -68,49 +68,23 @@ class _SplashRouterState extends State<SplashRouter> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_initialized) {
-      return const SplashScreen();
-    }
-
+    if (!_initialized) return const SplashScreen();
     final auth = context.watch<AuthProvider>();
-
-    if (!auth.isLoggedIn) {
-      return const LoginScreen();
-    }
-
+    if (!auth.isLoggedIn) return const LoginScreen();
     final user = auth.user!;
-
-    // Rejected
-    if (user.status == UserStatus.rejected) {
-      return const RejectedScreen();
-    }
-
-    // Pending
-    if (user.status == UserStatus.pending) {
-      return const PendingScreen();
-    }
-
-    // Route by role
+    if (user.status == UserStatus.rejected) return const RejectedScreen();
+    if (user.status == UserStatus.pending) return const PendingScreen();
     switch (user.role) {
-      case Roles.admin:
-        return const AdminDashboard();
-      case Roles.faculty:
-        return const FacultyDashboard();
-      case Roles.student:
-        return const StudentDashboard();
-      case Roles.hod:
-        return const HodDashboard();
-      case Roles.principal:
-        return const PrincipalDashboard();
-      default:
-        return const LoginScreen();
+      case Roles.admin: return const AdminDashboard();
+      case Roles.faculty: return const FacultyDashboard();
+      case Roles.student: return const StudentDashboard();
+      case Roles.hod: return const HodDashboard();
+      case Roles.principal: return const PrincipalDashboard();
+      default: return const LoginScreen();
     }
   }
 }
 
-// ─────────────────────────────────────────
-// SPLASH SCREEN
-// ─────────────────────────────────────────
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
 
@@ -123,13 +97,12 @@ class SplashScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 90,
-              height: 90,
+              width: 88, height: 88,
               decoration: BoxDecoration(
                 color: Colors.white.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(24),
               ),
-              child: const Icon(Icons.school, color: Colors.white, size: 48),
+              child: const Icon(Icons.school_rounded, color: Colors.white, size: 48),
             ),
             const SizedBox(height: 24),
             Text(
@@ -138,15 +111,25 @@ class SplashScreen extends StatelessWidget {
                 color: Colors.white,
                 fontSize: 32,
                 fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               'Smart Attendance System',
-              style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
+              style: GoogleFonts.inter(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 14,
+              ),
             ),
-            const SizedBox(height: 48),
-            const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+            const SizedBox(height: 56),
+            SizedBox(
+              width: 24, height: 24,
+              child: CircularProgressIndicator(
+                color: Colors.white.withOpacity(0.8),
+                strokeWidth: 2.5,
+              ),
+            ),
           ],
         ),
       ),
@@ -154,16 +137,12 @@ class SplashScreen extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────
-// REJECTED SCREEN
-// ─────────────────────────────────────────
 class RejectedScreen extends StatelessWidget {
   const RejectedScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(AppColors.surface),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -171,32 +150,33 @@ class RejectedScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 90, height: 90,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFFCE8E6),
+                width: 88, height: 88,
+                decoration: BoxDecoration(
+                  color: const Color(AppColors.error).withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.cancel, color: Color(0xFFEA4335), size: 48),
+                child: const Icon(Icons.cancel_rounded,
+                    color: Color(AppColors.error), size: 48),
               ),
               const SizedBox(height: 24),
               const Text('Account Rejected',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800)),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
               const SizedBox(height: 12),
               Text(
-                'Your account registration was rejected. Please contact your administrator.',
+                'Your registration was rejected. Please contact your administrator.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.6),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  fontSize: 14, height: 1.6,
+                ),
               ),
               const SizedBox(height: 40),
-              ElevatedButton.icon(
-                onPressed: () => context.read<AuthProvider>().logout(),
-                icon: const Icon(Icons.logout),
-                label: const Text('Sign Out'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(AppColors.primary),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => context.read<AuthProvider>().logout(),
+                  icon: const Icon(Icons.logout_rounded, size: 18),
+                  label: const Text('Sign Out'),
                 ),
               ),
             ],

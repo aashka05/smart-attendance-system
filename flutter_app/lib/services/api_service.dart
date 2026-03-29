@@ -66,6 +66,7 @@ class ApiService {
     String? departmentId,
     String? enrollmentNumber,
     String? employeeId,
+    int? year,
   }) async {
     final response = await http.post(
       Uri.parse('${AppConfig.baseUrl}/auth/register'),
@@ -78,6 +79,7 @@ class ApiService {
         'department_id': departmentId,
         'enrollment_number': enrollmentNumber,
         'employee_id': employeeId,
+        'year': year,
       }),
     );
     return _handleResponse(response);
@@ -211,11 +213,14 @@ class ApiService {
     required String subjectId,
     required String facultyId,
     required String departmentId,
-    required String section,
+    String? section,
     required String dayOfWeek,
     required String startTime,
     required String endTime,
     required String room,
+    int? year,
+    String? lectureType,
+    String? batch,
   }) async {
     final response = await http.post(
       Uri.parse('${AppConfig.baseUrl}/timetable'),
@@ -229,6 +234,9 @@ class ApiService {
         'start_time': startTime,
         'end_time': endTime,
         'room': room,
+        'year': year,
+        'lecture_type': lectureType ?? 'lecture',
+        'batch': batch,
       }),
     );
     return _handleResponse(response);

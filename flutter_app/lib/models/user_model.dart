@@ -12,6 +12,9 @@ class UserModel {
   final String? employeeId;
   final bool faceEnrolled;
   final String createdAt;
+  final int? year;
+  final String? practicalBatch;
+  final String? tutorialBatch;
 
   UserModel({
     required this.id,
@@ -25,6 +28,9 @@ class UserModel {
     this.employeeId,
     this.faceEnrolled = false,
     required this.createdAt,
+    this.year,
+    this.practicalBatch,
+    this.tutorialBatch,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -40,6 +46,9 @@ class UserModel {
       employeeId: json['employee_id'],
       faceEnrolled: (json['face_enrolled'] ?? 0) == 1,
       createdAt: json['created_at'] ?? '',
+      year: json['year'],
+      practicalBatch: json['practical_batch'],
+      tutorialBatch: json['tutorial_batch'],
     );
   }
 
@@ -62,4 +71,6 @@ class UserModel {
       default: return status;
     }
   }
+
+  String get yearDisplay => year != null ? 'Year $year' : '';
 }
