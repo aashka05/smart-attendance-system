@@ -6,6 +6,7 @@ import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
+import '../profile/profile_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_departments_screen.dart';
 import 'admin_timetable_screen.dart';
@@ -67,6 +68,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     color: Color(AppColors.adminColor), size: 18),
               ),
               itemBuilder: (_) => [
+                PopupMenuItem(
+                  child: const Row(children: [
+                    Icon(Icons.account_circle_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('Profile'),
+                  ]),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const ProfileScreen(),
+                  )),
+                ),
                 PopupMenuItem(
                   child: const Row(children: [
                     Icon(Icons.logout_rounded, size: 18),

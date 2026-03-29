@@ -8,8 +8,10 @@ import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
+import 'attendance_calendar_screen.dart';
 import 'face_enrollment_screen.dart';
 import 'face_scan_screen.dart';
+import '../profile/profile_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   const StudentDashboard({super.key});
@@ -239,6 +241,16 @@ class _StudentDashboardState extends State<StudentDashboard> {
               itemBuilder: (_) => [
                 PopupMenuItem(
                   child: const Row(children: [
+                    Icon(Icons.account_circle_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('Profile'),
+                  ]),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const ProfileScreen(),
+                  )),
+                ),
+                PopupMenuItem(
+                  child: const Row(children: [
                     Icon(Icons.logout_rounded, size: 18),
                     SizedBox(width: 8),
                     Text('Sign Out'),
@@ -301,6 +313,24 @@ class _StudentDashboardState extends State<StudentDashboard> {
               ),
               const SizedBox(height: 14),
             ],
+
+            // My Attendance card
+            ActionCard(
+              icon: Icons.calendar_month_rounded,
+              title: 'My Attendance',
+              subtitle: 'View calendar & subject breakdown',
+              color: const Color(AppColors.success),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AttendanceCalendarScreen(
+                    studentId: user.id,
+                    studentName: user.fullName,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
 
             // BLE Scanner
             Container(

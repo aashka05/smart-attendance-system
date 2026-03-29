@@ -6,6 +6,7 @@ import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
+import '../profile/profile_screen.dart';
 
 class HodDashboard extends StatefulWidget {
   const HodDashboard({super.key});
@@ -85,6 +86,16 @@ class _HodDashboardState extends State<HodDashboard>
                     color: Color(AppColors.hodColor), size: 18),
               ),
               itemBuilder: (_) => [
+                PopupMenuItem(
+                  child: const Row(children: [
+                    Icon(Icons.account_circle_rounded, size: 18),
+                    SizedBox(width: 8),
+                    Text('Profile'),
+                  ]),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const ProfileScreen(),
+                  )),
+                ),
                 PopupMenuItem(
                   child: const Row(children: [
                     Icon(Icons.logout_rounded, size: 18),
