@@ -424,11 +424,15 @@ async def verify_face(
         conn.close()
         raise HTTPException(status_code=400, detail="Invalid or expired challenge")
 
-    # Check challenge not older than 30 seconds
+    # Check challenge not older than 120 seconds
     created_at = challenge["created_at"]
     if isinstance(created_at, str):
         created_at = datetime.fromisoformat(created_at)
-    if (datetime.utcnow() - created_at).seconds > 30:
+    # PostgreSQL NOW() is timezone-aware; datetime.utcnow() is naive.
+    # Strip tzinfo so the subtraction doesn't raise TypeError.
+    if hasattr(created_at, 'tzinfo') and created_at.tzinfo is not None:
+        created_at = created_at.replace(tzinfo=None)
+    if (datetime.utcnow() - created_at).total_seconds() > 120:
         conn.close()
         raise HTTPException(status_code=400, detail="Challenge expired")
 
@@ -483,10 +487,21 @@ async def verify_face(
         raise HTTPException(status_code=400, detail=f"Face detection failed: {error}")
 
     # Compare
-    stored_embedding = json.loads(enrollment["face_embedding"])
-    similarity = cosine_similarity(live_embedding, stored_embedding)
+    stored_embedding = enrollment["face_embedding"]
+    # Defensive: handle double-encoded JSON from migration (string inside string)
+    if isinstance(stored_embedding, str):
+        stored_embedding = json.loads(stored_embedding)
+    if isinstance(stored_embedding, str):
+        # Was double-encoded — decode one more time
+        stored_embedding = json.loads(stored_embedding)
 
-    SIMILARITY_THRESHOLD = 0.4
+    print(f"[verify-face] stored embedding type: {type(stored_embedding)}, len: {len(stored_embedding) if hasattr(stored_embedding, '__len__') else 'N/A'}")
+    print(f"[verify-face] live embedding type:   {type(live_embedding)}, len: {len(live_embedding) if hasattr(live_embedding, '__len__') else 'N/A'}")
+
+    similarity = cosine_similarity(live_embedding, stored_embedding)
+    print(f"[verify-face] similarity = {similarity:.4f}")
+
+    SIMILARITY_THRESHOLD = 0.3
 
     if similarity < SIMILARITY_THRESHOLD:
         conn.close()

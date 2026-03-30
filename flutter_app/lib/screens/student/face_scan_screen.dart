@@ -81,7 +81,7 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       orElse: () => cameras.first,
     );
     _cameraController = CameraController(
-      frontCamera, ResolutionPreset.low,
+      frontCamera, ResolutionPreset.medium,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.yuv420,
     );
@@ -224,10 +224,43 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
     if (_challengeComplete) return;
     setState(() {
       _challengeComplete = true;
-      _status = 'Challenge complete! Capturing face...';
+      _status = 'Challenge complete! Face forward... 📷';
     });
+    // Give the user 1.5 s to return to a neutral frontal pose before capture.
+    // Without this, a head-turn image is captured at an angle and InsightFace
+    // returns a side-profile embedding that won't match the frontal enrollment.
+    await Future.delayed(const Duration(milliseconds: 1500));
+    setState(() => _status = 'Capturing face...');
     await _cameraController?.stopImageStream();
     await _captureAndSubmit();
+  }
+
+  /// Fetches a brand-new challenge from the server and resets all liveness
+  /// tracking state. Called on every retry so the old (used/expired)
+  /// challenge_id is never replayed.
+  Future<void> _refreshChallenge() async {
+    setState(() {
+      _isSubmitting = false;
+      _challengeComplete = false;
+      _blinkCount = 0;
+      _eyesWereClosed = false;
+      _headTurnedLeft = false;
+      _headTurnedRight = false;
+      _smileDetected = false;
+      _status = 'Attempt $_attempts/$maxAttempts failed. Refreshing challenge...';
+    });
+    try {
+      final result = await ApiService().getLivenessChallenge(sessionId: widget.sessionId);
+      setState(() {
+        _challengeId = result['challenge_id'];
+        _challenge = result['challenge'];
+        _instruction = result['instruction'];
+        _status = 'Try again: ${result['instruction']}';
+      });
+    } catch (e) {
+      setState(() => _status = 'Could not refresh challenge: $e');
+    }
+    _cameraController?.startImageStream(_processCameraImage);
   }
 
   Future<void> _captureAndSubmit() async {
@@ -246,20 +279,18 @@ class _FaceScanScreenState extends State<FaceScanScreen> {
       if (mounted) _showResult(true, result['message'] ?? 'Attendance marked!');
     } catch (e) {
       _attempts++;
+      final errorMsg = e.toString();
       if (_attempts >= maxAttempts) {
-        if (mounted) _showResult(false, 'Maximum attempts reached.');
+        // Show the actual server error so the user/dev knows what went wrong.
+        if (mounted) _showResult(false, errorMsg);
       } else {
-        setState(() {
-          _challengeComplete = false;
-          _blinkCount = 0;
-          _eyesWereClosed = false;
-          _headTurnedLeft = false;
-          _headTurnedRight = false;
-          _smileDetected = false;
-          _status = 'Attempt $_attempts/$maxAttempts failed. Try again: $_instruction';
-          _isSubmitting = false;
-        });
-        _cameraController?.startImageStream(_processCameraImage);
+        // Surface the error in the status so it is visible during refresh.
+        if (mounted) {
+          setState(() => _status = 'Failed: $errorMsg');
+          await Future.delayed(const Duration(seconds: 2));
+        }
+        // Fetch a fresh challenge so the used/expired challenge_id is not replayed.
+        if (mounted) await _refreshChallenge();
       }
     }
   }
