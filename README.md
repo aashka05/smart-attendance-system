@@ -54,14 +54,24 @@ attendance_system/
 - Android Studio
 
 ### Server Setup
+Linux/MacOS
 ```bash
 cd server
-python3 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
 # edit .env and set your SECRET_KEY
 python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+Windows
+```bash
+cd server
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 ### Flutter App Setup
