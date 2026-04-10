@@ -1,7 +1,9 @@
 // lib/config.dart
 
 class AppConfig {
-  static const String baseUrl = "http://192.168.1.102:8000";
+  //static const String baseUrl = "http://172.16.4.148";
+  //static const String baseUrl = "http://59.95.100.34:45810";
+  static const String baseUrl = "http://192.168.1.102";
   static const int manufacturerId = 0x4154;
   static const int bleScanDuration = 30;
   static const String appName = "AttendX";

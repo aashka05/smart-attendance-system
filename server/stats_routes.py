@@ -36,7 +36,7 @@ def get_student_stats(student_id: str, current_user: dict = Depends(get_current_
     # Get all subjects for this student
     slots = conn.execute(
         """
-        SELECT DISTINCT ts.id as slot_id, ts.subject_id,
+        SELECT DISTINCT ts.id as slot_id, ts.subject_id, ts.faculty_id,
                s.name as subject_name, s.code as subject_code,
                ts.lecture_type, ts.batch,
                u.full_name as faculty_name
@@ -71,6 +71,10 @@ def get_student_stats(student_id: str, current_user: dict = Depends(get_current_
             student_id,
         ),
     ).fetchall()
+
+    # Filter for faculty
+    if current_user["role"] == "faculty":
+        slots = [s for s in slots if dict(s)["faculty_id"] == current_user["id"]]
 
     stats = []
     for slot in slots:
@@ -121,11 +125,18 @@ def get_student_stats(student_id: str, current_user: dict = Depends(get_current_
             }
         )
 
+    overall_attended = sum(int(s["attended"]) for s in stats)
+    overall_total = sum(int(s["total_held"]) for s in stats)
+    overall_percentage = round((overall_attended / overall_total * 100), 1) if overall_total > 0 else 0.0
+
     conn.close()
     return {
         "student_id": student_id,
         "student_name": student["full_name"],
         "stats": stats,
+        "attended": overall_attended,
+        "total": overall_total,
+        "overall_percentage": overall_percentage,
     }
 
 
@@ -152,53 +163,74 @@ def get_student_calendar(
 
     student = dict(student)
 
-    # Get attendance records for the month
+    # Get attendance sessions for the month, including absent markers when a student has no present record.
     month_str = f"{year}-{month:02d}"
 
+    records = conn.execute(
+        """
+        SELECT ases.started_at::date::text as session_date,
+               COALESCE(ar.status, 'absent') as status,
+               s.name as subject_name, s.id as subject_id, ts.faculty_id
+        FROM attendance_sessions ases
+        LEFT JOIN attendance_records ar
+            ON ases.id = ar.session_id AND ar.student_id = %s
+        LEFT JOIN timetable_slots ts ON ases.slot_id = ts.id
+        LEFT JOIN subjects s ON ts.subject_id = s.id
+        LEFT JOIN elective_enrollments ee
+            ON ts.id = ee.slot_id AND ee.student_id = %s AND ee.status = 'enrolled'
+        WHERE ases.status = 'closed'
+          AND to_char(ases.started_at, 'YYYY-MM') = %s
+          AND ases.slot_id NOT IN (
+              SELECT slot_id FROM cancelled_lectures
+              WHERE date = ases.started_at::date::text
+          )
+          AND (
+              (ts.lecture_type = 'lecture' AND ts.department_id = %s AND ts.year = %s)
+              OR (ts.lecture_type IN ('practical', 'tutorial')
+                  AND ts.department_id = %s AND ts.year = %s
+                  AND (ts.batch = %s OR ts.batch = %s OR ts.batch IS NULL))
+              OR (ts.lecture_type IN ('open_elective', 'program_elective')
+                  AND ee.student_id IS NOT NULL)
+          )
+        ORDER BY ases.started_at ASC
+    """,
+        (
+            student_id,
+            student_id,
+            month_str,
+            student["department_id"],
+            student.get("year"),
+            student["department_id"],
+            student.get("year"),
+            student.get("practical_batch"),
+            student.get("tutorial_batch"),
+        ),
+    ).fetchall()
+
+    # Filter for faculty
+    if current_user["role"] == "faculty":
+        records = [r for r in records if dict(r)["faculty_id"] == current_user["id"]]
+
     if subject_id:
-        records = conn.execute(
-            """
-            SELECT ar.marked_at, ar.status,
-                   s.name as subject_name, s.id as subject_id,
-                   ases.started_at::date::text as session_date
-            FROM attendance_records ar
-            LEFT JOIN attendance_sessions ases ON ar.session_id = ases.id
-            LEFT JOIN timetable_slots ts ON ases.slot_id = ts.id
-            LEFT JOIN subjects s ON ts.subject_id = s.id
-            WHERE ar.student_id = %s
-            AND ts.subject_id = %s
-            AND to_char(ases.started_at, 'YYYY-MM') = %s
-        """,
-            (student_id, subject_id, month_str),
-        ).fetchall()
-    else:
-        records = conn.execute(
-            """
-            SELECT ar.marked_at, ar.status,
-                   s.name as subject_name, s.id as subject_id,
-                   ases.started_at::date::text as session_date
-            FROM attendance_records ar
-            LEFT JOIN attendance_sessions ases ON ar.session_id = ases.id
-            LEFT JOIN timetable_slots ts ON ases.slot_id = ts.id
-            LEFT JOIN subjects s ON ts.subject_id = s.id
-            WHERE ar.student_id = %s
-            AND to_char(ases.started_at, 'YYYY-MM') = %s
-        """,
-            (student_id, month_str),
-        ).fetchall()
+        records = [
+            r for r in records if r["subject_id"] == subject_id
+        ]
 
     # Get cancelled lectures for the month
-    cancelled = conn.execute(
-        """
+    cancelled_query = """
         SELECT cl.date, s.name as subject_name
         FROM cancelled_lectures cl
         LEFT JOIN timetable_slots ts ON cl.slot_id = ts.id
         LEFT JOIN subjects s ON ts.subject_id = s.id
         WHERE to_char(cl.date::date, 'YYYY-MM') = %s
-        AND ts.department_id = %s
-    """,
-        (month_str, student["department_id"]),
-    ).fetchall()
+          AND ts.department_id = %s
+    """
+    params = [month_str, student["department_id"]]
+    if current_user["role"] == "faculty":
+        cancelled_query += " AND ts.faculty_id = %s"
+        params.append(current_user["id"])
+
+    cancelled = conn.execute(cancelled_query, params).fetchall()
 
     # Get college events for the month
     events = conn.execute(
@@ -253,6 +285,53 @@ def get_student_calendar(
         "year": year,
         "calendar": calendar_data,
     }
+
+
+# ─────────────────────────────────────────
+# SESSION ATTENDEES
+# ─────────────────────────────────────────
+@router.get("/stats/session/{session_id}/attendees")
+def get_session_attendees(
+    session_id: str, current_user: dict = Depends(require_role("faculty", "admin", "hod"))
+):
+    """Get list of attendees for a specific session."""
+    conn = get_db()
+
+    session = conn.execute(
+        "SELECT * FROM attendance_sessions WHERE id = %s",
+        (session_id,),
+    ).fetchone()
+
+    if not session:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = dict(session)
+
+    # Check access: faculty can only view their own sessions
+    if current_user["role"] == "faculty":
+        slot = conn.execute(
+            "SELECT faculty_id FROM timetable_slots WHERE id = %s",
+            (session["slot_id"],),
+        ).fetchone()
+        if not slot or slot["faculty_id"] != current_user["id"]:
+            conn.close()
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    # Get attendees
+    attendees = conn.execute(
+        """
+        SELECT ar.student_id, u.full_name, u.enrollment_number
+        FROM attendance_records ar
+        LEFT JOIN users u ON ar.student_id = u.id
+        WHERE ar.session_id = %s AND ar.status = 'present'
+        ORDER BY u.full_name ASC
+    """,
+        (session_id,),
+    ).fetchall()
+
+    conn.close()
+    return [dict(a) for a in attendees]
 
 
 # ─────────────────────────────────────────
@@ -370,6 +449,7 @@ def get_class_stats(
     conn.close()
     return {
         "slot_id": slot_id,
+        "subject_id": slot["subject_id"],
         "subject_name": slot["subject_name"],
         "subject_code": slot["subject_code"],
         "department_name": slot["department_name"],
@@ -388,6 +468,52 @@ def get_class_calendar(
 ):
     """Get session history for a slot by month."""
     conn = get_db()
+
+    slot = conn.execute(
+        "SELECT * FROM timetable_slots WHERE id = %s",
+        (slot_id,),
+    ).fetchone()
+    if not slot:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    slot = dict(slot)
+    if current_user["role"] == "faculty" and slot["faculty_id"] != current_user["id"]:
+        conn.close()
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if slot["lecture_type"] in ["open_elective", "program_elective"]:
+        total_students = conn.execute(
+            """
+            SELECT COUNT(*) as count
+            FROM elective_enrollments
+            WHERE slot_id = %s AND status = 'enrolled'
+        """,
+            (slot_id,),
+        ).fetchone()["count"]
+    else:
+        batch_filter = ""
+        params = [slot["department_id"], slot["year"]]
+        if slot.get("batch") and slot["lecture_type"] == "practical":
+            batch_filter = "AND u.practical_batch = %s"
+            params.append(slot["batch"])
+        elif slot.get("batch") and slot["lecture_type"] == "tutorial":
+            batch_filter = "AND u.tutorial_batch = %s"
+            params.append(slot["batch"])
+
+        total_students = conn.execute(
+            f"""
+            SELECT COUNT(*) as count
+            FROM users u
+            WHERE u.department_id = %s
+            AND u.year = %s
+            AND u.role = 'student'
+            AND u.status = 'approved'
+            {batch_filter}
+        """,
+            params,
+        ).fetchone()["count"]
+
     month_str = f"{year}-{month:02d}"
 
     sessions = conn.execute(
@@ -416,12 +542,31 @@ def get_class_calendar(
         (slot_id, month_str),
     ).fetchall()
 
+    result_sessions = []
+    for s in sessions:
+        s = dict(s)
+        original_status = s["status"]
+        present_count = int(s.get("present_count", 0) or 0)
+        absent_count = max(total_students - present_count, 0)
+
+        if original_status == "live":
+            s["status"] = "live"
+        elif absent_count > 0:
+            s["status"] = "absent"
+        else:
+            s["status"] = "present"
+
+        s["session_status"] = original_status
+        s["absent_count"] = absent_count
+        s["total_students"] = total_students
+        result_sessions.append(s)
+
     conn.close()
     return {
         "slot_id": slot_id,
         "month": month,
         "year": year,
-        "sessions": [dict(s) for s in sessions],
+        "sessions": result_sessions,
         "cancelled": [dict(c) for c in cancelled],
     }
 

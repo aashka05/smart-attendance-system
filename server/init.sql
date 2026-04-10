@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS subjects (
     name            TEXT NOT NULL,
     code            TEXT UNIQUE NOT NULL,
     department_id   TEXT NOT NULL,
+    year            INTEGER NOT NULL,
     created_at      TIMESTAMP DEFAULT NOW(),
     FOREIGN KEY (department_id) REFERENCES departments(id)
 );

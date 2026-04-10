@@ -21,6 +21,7 @@ class StudentDashboard extends StatefulWidget {
 
 class _StudentDashboardState extends State<StudentDashboard> {
   List<dynamic> _slots = [];
+  List<dynamic> _allSlots = [];
   bool _loading = false;
   bool _isScanning = false;
   List<Map<String, dynamic>> _detectedSignals = [];
@@ -46,11 +47,24 @@ class _StudentDashboardState extends State<StudentDashboard> {
     super.dispose();
   }
 
+  String _getTodayDayOfWeek() {
+    final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    return days[DateTime.now().weekday - 1];
+  }
+
+  List<dynamic> _filterTodaySlots(List<dynamic> slots) {
+    final today = _getTodayDayOfWeek();
+    return slots.where((slot) => slot['day_of_week'] == today).toList();
+  }
+
   Future<void> _loadSlots() async {
     setState(() => _loading = true);
     try {
       final slots = await ApiService().getTimetable();
-      setState(() => _slots = slots);
+      setState(() {
+        _allSlots = slots;
+        _slots = _filterTodaySlots(slots);
+      });
     } catch (e) {
       _showSnack(e.toString(), isError: true);
     }
@@ -71,6 +85,150 @@ class _StudentDashboardState extends State<StudentDashboard> {
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
     ));
+  }
+
+  void _showFullTimetable() {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Full Timetable',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: SingleChildScrollView(
+                child: _allSlots.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(40),
+                        child: EmptyState(
+                          icon: Icons.calendar_today_rounded,
+                          title: 'No slots scheduled',
+                        ),
+                      )
+                    : Column(
+                        children: _allSlots.map((slot) {
+                          final today = _getTodayDayOfWeek();
+                          final isToday = slot['day_of_week'] == today;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: isToday
+                                      ? const Color(AppColors.primary).withOpacity(0.3)
+                                      : Colors.transparent,
+                                  width: 2,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: AppCard(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 4,
+                                      height: 60,
+                                      decoration: BoxDecoration(
+                                        color: isToday
+                                            ? const Color(AppColors.primary)
+                                            : const Color(AppColors.primary).withOpacity(0.4),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  slot['subject_name'] ?? '',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ),
+                                              if (isToday)
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(AppColors.primary)
+                                                        .withOpacity(0.15),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: const Text(
+                                                    'Today',
+                                                    style: TextStyle(
+                                                      color: Color(AppColors.primary),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w600,
+                                                    ),
+                                                  ),
+                                                ),
+                                              LectureTypeBadge(
+                                                type: slot['lecture_type'] ?? 'lecture',
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${slot['faculty_name']} • ${slot['room']}',
+                                            style: TextStyle(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withOpacity(0.5),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${slot['day_of_week']} ${slot['start_time']} – ${slot['end_time']}',
+                                            style: TextStyle(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withOpacity(0.5),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _startScanning() async {
@@ -489,9 +647,19 @@ class _StudentDashboardState extends State<StudentDashboard> {
             SectionHeader(
               title: 'My Schedule',
               subtitle: "Today's lectures",
-              action: IconButton(
-                icon: const Icon(Icons.refresh_rounded, size: 20),
-                onPressed: _loadSlots,
+              action: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.calendar_view_week_rounded, size: 20),
+                    onPressed: _showFullTimetable,
+                    tooltip: 'Full Timetable',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, size: 20),
+                    onPressed: _loadSlots,
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 14),

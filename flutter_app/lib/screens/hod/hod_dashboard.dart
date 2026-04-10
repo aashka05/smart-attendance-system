@@ -22,6 +22,8 @@ class _HodDashboardState extends State<HodDashboard>
   List<dynamic> _pendingUsers = [];
   List<dynamic> _reports = [];
   bool _loading = false;
+  String _selectedRole = 'all';
+  int? _selectedYear;
 
   @override
   void initState() {
@@ -66,6 +68,61 @@ class _HodDashboardState extends State<HodDashboard>
     } catch (e) {
       _showSnack(e.toString(), isError: true);
     }
+  }
+
+  List<dynamic> _getFilteredUsers() {
+    return _deptUsers.where((user) {
+      if (_selectedRole != 'all' && user['role'] != _selectedRole) {
+        return false;
+      }
+      if (_selectedRole == 'student' && _selectedYear != null) {
+        if (user['year'] != _selectedYear) {
+          return false;
+        }
+      }
+      return true;
+    }).toList();
+  }
+
+  Set<int> _getAvailableYears() {
+    return _deptUsers
+        .where((user) => user['role'] == 'student' && user['year'] != null)
+        .map<int>((user) => user['year'] as int)
+        .toSet();
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(AppColors.primary)
+              : const Color(AppColors.primary).withOpacity(0.08),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? const Color(AppColors.primary)
+                : const Color(AppColors.primary).withOpacity(0.2),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected
+                ? Colors.white
+                : const Color(AppColors.primary),
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -134,61 +191,97 @@ class _HodDashboardState extends State<HodDashboard>
   }
 
   Widget _buildUsers() {
-    if (_deptUsers.isEmpty) {
-      return const EmptyState(
-        icon: Icons.people_rounded,
-        title: 'No users in your department',
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _deptUsers.length,
-      itemBuilder: (_, i) {
-        final u = _deptUsers[i];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: AppCard(
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 20,
-                  backgroundColor: const Color(AppColors.primary).withOpacity(0.1),
-                  child: Text(
-                    (u['full_name'] as String)[0].toUpperCase(),
-                    style: const TextStyle(
-                      color: Color(AppColors.primary),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+    final filteredUsers = _getFilteredUsers();
+    final availableYears = _getAvailableYears();
+
+    return Column(
+      children: [
+        if (_deptUsers.isNotEmpty) Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              //const Text('Filters', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildFilterChip(label: 'All', selected: _selectedRole == 'all', onTap: () => setState(() { _selectedRole = 'all'; _selectedYear = null; })),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(label: 'Faculty', selected: _selectedRole == 'faculty', onTap: () => setState(() { _selectedRole = 'faculty'; _selectedYear = null; })),
+                    const SizedBox(width: 8),
+                    _buildFilterChip(label: 'Students', selected: _selectedRole == 'student', onTap: () => setState(() { _selectedRole = 'student'; })),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              if (_selectedRole == 'student') ...[const SizedBox(height: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
                     children: [
-                      Text(u['full_name'],
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      Text(u['email'],
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                            fontSize: 12,
-                          )),
+                      _buildFilterChip(label: 'All Years', selected: _selectedYear == null, onTap: () => setState(() => _selectedYear = null)),
+                      ...(availableYears.toList()..sort()).map((year) => Padding(padding: const EdgeInsets.only(left: 8), child: _buildFilterChip(label: 'Year $year', selected: _selectedYear == year, onTap: () => setState(() => _selectedYear = year)))),
                     ],
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    RoleBadge(role: u['role']),
-                    const SizedBox(height: 4),
-                    StatusBadge(status: u['status']),
-                  ],
-                ),
               ],
-            ),
+            ],
           ),
-        );
-      },
+        ),
+        Expanded(
+          child: _deptUsers.isEmpty
+              ? const EmptyState(
+                  icon: Icons.people_rounded,
+                  title: 'No users in your department',
+                )
+              : filteredUsers.isEmpty
+                  ? const EmptyState(icon: Icons.people_rounded, title: 'No users matching filters')
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: filteredUsers.length,
+                      itemBuilder: (_, i) {
+                        final u = filteredUsers[i];
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: AppCard(
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundColor: const Color(AppColors.primary).withOpacity(0.1),
+                                  child: Text(
+                                    (u['full_name'] as String)[0].toUpperCase(),
+                                    style: const TextStyle(color: Color(AppColors.primary), fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(u['full_name'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      Text(u['email'], style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 12)),
+                                      if (u['role'] == 'student' && u['year'] != null) Text('Year ${u['year']}', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 11)),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    RoleBadge(role: u['role']),
+                                    const SizedBox(height: 4),
+                                    StatusBadge(status: u['status']),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 

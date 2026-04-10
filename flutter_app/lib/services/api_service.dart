@@ -138,6 +138,19 @@ class ApiService {
     return _handleResponse(response);
   }
 
+  Future<Map<String, dynamic>> importCsv(String endpoint, String filePath) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('${AppConfig.baseUrl}/admin/import/$endpoint'),
+    );
+    final headers = await _authHeaders();
+    request.headers.addAll(headers);
+    request.files.add(await http.MultipartFile.fromPath('file', filePath));
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    return _handleResponse(response);
+  }
+
   // ─────────────────────────────────────────
   // DEPARTMENTS
   // ─────────────────────────────────────────
@@ -469,6 +482,14 @@ class ApiService {
   }) async {
     final response = await http.get(
       Uri.parse('${AppConfig.baseUrl}/stats/class/calendar/$slotId?month=$month&year=$year'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<List<dynamic>> getSessionAttendees(String sessionId) async {
+    final response = await http.get(
+      Uri.parse('${AppConfig.baseUrl}/stats/session/$sessionId/attendees'),
       headers: await _authHeaders(),
     );
     return _handleResponse(response);

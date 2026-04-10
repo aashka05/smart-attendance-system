@@ -8,11 +8,13 @@ import '../../widgets/common_widgets.dart';
 class AttendanceCalendarScreen extends StatefulWidget {
   final String studentId;
   final String studentName;
+  final String? subjectId;
 
   const AttendanceCalendarScreen({
     super.key,
     required this.studentId,
     required this.studentName,
+    this.subjectId,
   });
 
   @override
@@ -46,6 +48,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     final now = DateTime.now();
     _currentMonth = now.month;
     _currentYear = now.year;
+    _selectedSubjectId = widget.subjectId; // Set initial filter to subjectId if provided
     _loadStats();
     _loadCalendar();
   }
@@ -126,10 +129,13 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   // ─────────────────────────────────────────
 
   double get _overallPercentage {
-    if (_subjectStats.isEmpty) return 0;
+    final filteredStats = _selectedSubjectId != null
+        ? _subjectStats.where((s) => s['subject_id'] == _selectedSubjectId).toList()
+        : _subjectStats;
+    if (filteredStats.isEmpty) return 0;
     int totalHeld = 0;
     int totalAttended = 0;
-    for (final s in _subjectStats) {
+    for (final s in filteredStats) {
       totalHeld += (s['total_held'] as num?)?.toInt() ?? 0;
       totalAttended += (s['attended'] as num?)?.toInt() ?? 0;
     }
@@ -138,9 +144,12 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   }
 
   String get _attendedOfTotal {
+    final filteredStats = _selectedSubjectId != null
+        ? _subjectStats.where((s) => s['subject_id'] == _selectedSubjectId).toList()
+        : _subjectStats;
     int totalHeld = 0;
     int totalAttended = 0;
-    for (final s in _subjectStats) {
+    for (final s in filteredStats) {
       totalHeld += (s['total_held'] as num?)?.toInt() ?? 0;
       totalAttended += (s['attended'] as num?)?.toInt() ?? 0;
     }
@@ -148,8 +157,11 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   }
 
   int get _atRiskCount {
+    final filteredStats = _selectedSubjectId != null
+        ? _subjectStats.where((s) => s['subject_id'] == _selectedSubjectId).toList()
+        : _subjectStats;
     int count = 0;
-    for (final s in _subjectStats) {
+    for (final s in filteredStats) {
       if (s['is_below_threshold'] == true) count++;
     }
     return count;
@@ -161,9 +173,12 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.subjectId != null
+        ? (_subjectMap[widget.subjectId]?['name'] ?? 'Attendance')
+        : 'My Attendance';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Attendance'),
+        title: Text(title),
       ),
       body: _statsLoading
           ? const Center(child: CircularProgressIndicator())
@@ -271,6 +286,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   // ─────────────────────────────────────────
 
   Widget _buildSubjectFilterChips() {
+    if (widget.subjectId != null) return const SizedBox.shrink(); // Hide filters for faculty view
     final subjectIds = _subjectMap.keys.toList();
     final options = subjectIds
         .map((id) => _subjectMap[id]!['code'] ?? id)
@@ -843,8 +859,62 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   // 6. SUBJECT BREAKDOWN
   // ─────────────────────────────────────────
 
+  List<Map<String, dynamic>> get _groupedSubjectStats {
+    final grouped = <String, Map<String, dynamic>>{};
+
+    final filteredStats = _selectedSubjectId != null
+        ? _subjectStats.where((s) => s['subject_id'] == _selectedSubjectId).toList()
+        : _subjectStats;
+
+    for (final stat in filteredStats) {
+      final subjectId = stat['subject_id'] as String? ?? '';
+      final lectureType = stat['lecture_type'] as String? ?? 'lecture';
+      final key = '$subjectId|$lectureType';
+
+      if (!grouped.containsKey(key)) {
+        grouped[key] = {
+          'subject_id': subjectId,
+          'subject_name': stat['subject_name'] ?? '',
+          'subject_code': stat['subject_code'] ?? '',
+          'lecture_type': lectureType,
+          'faculty_name': stat['faculty_name'] ?? '',
+          'total_held': 0,
+          'attended': 0,
+          'is_below_threshold': false,
+        };
+      }
+
+      // Aggregate data
+      final group = grouped[key]!;
+      group['total_held'] = (group['total_held'] as int) + ((stat['total_held'] as num?)?.toInt() ?? 0);
+      group['attended'] = (group['attended'] as int) + ((stat['attended'] as num?)?.toInt() ?? 0);
+
+      // Update faculty name if different (prefer non-null)
+      if (group['faculty_name'].isEmpty && (stat['faculty_name'] ?? '').isNotEmpty) {
+        group['faculty_name'] = stat['faculty_name'] ?? '';
+      }
+    }
+
+    // Calculate percentages and threshold status
+    final result = grouped.values.toList();
+    for (final stat in result) {
+      final totalHeld = stat['total_held'] as int;
+      final attended = stat['attended'] as int;
+      final percentage = totalHeld > 0 ? (attended / totalHeld) * 100 : 0.0;
+      stat['percentage'] = percentage;
+      stat['is_below_threshold'] = percentage < 75 && totalHeld > 0;
+    }
+
+    // Sort by subject name
+    result.sort((a, b) => (a['subject_name'] as String).compareTo(b['subject_name'] as String));
+
+    return result;
+  }
+
   Widget _buildSubjectBreakdown() {
-    if (_subjectStats.isEmpty) {
+    final groupedStats = _groupedSubjectStats;
+
+    if (groupedStats.isEmpty) {
       return const EmptyState(
         icon: Icons.school_rounded,
         title: 'No subjects found',
@@ -860,7 +930,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
           subtitle: 'Per-subject attendance details',
         ),
         const SizedBox(height: 14),
-        ..._subjectStats.map((stat) {
+        ...groupedStats.map((stat) {
           final percentage =
               (stat['percentage'] as num?)?.toDouble() ?? 0.0;
           final isBelowThreshold = stat['is_below_threshold'] == true;

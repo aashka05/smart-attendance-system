@@ -1,0 +1,49 @@
+name,code,department_name,year
+Engineering Mathematics I,CS101,Computer Science,1
+Engineering Physics,CS102,Computer Science,1
+Basic Electrical Engineering,CS103,Computer Science,1
+Programming Fundamentals,CS104,Computer Science,1
+Engineering Graphics,CS105,Computer Science,1
+Communication Skills,CS106,Computer Science,1
+Data Structures,CS201,Computer Science,2
+Object Oriented Programming,CS202,Computer Science,2
+Discrete Mathematics,CS203,Computer Science,2
+Computer Organization,CS204,Computer Science,2
+Database Management Systems,CS205,Computer Science,2
+Digital Logic Design,CS206,Computer Science,2
+Operating Systems,CS301,Computer Science,3
+Computer Networks,CS302,Computer Science,3
+Software Engineering,CS303,Computer Science,3
+Theory of Computation,CS304,Computer Science,3
+Web Technologies,CS305,Computer Science,3
+Artificial Intelligence,CS306,Computer Science,3
+Machine Learning,CS401,Computer Science,4
+Cloud Computing,CS402,Computer Science,4
+Information Security,CS403,Computer Science,4
+Big Data Analytics,CS404,Computer Science,4
+Project Management,CS405,Computer Science,4
+Capstone Project,CS406,Computer Science,4
+Engineering Mathematics I,IT101,Information Technology,1
+Engineering Chemistry,IT102,Information Technology,1
+Basic Electronics,IT103,Information Technology,1
+Introduction to IT,IT104,Information Technology,1
+Engineering Mechanics,IT105,Information Technology,1
+Environmental Studies,IT106,Information Technology,1
+Data Structures & Algorithms,IT201,Information Technology,2
+Java Programming,IT202,Information Technology,2
+Probability & Statistics,IT203,Information Technology,2
+Microprocessor Systems,IT204,Information Technology,2
+DBMS & SQL,IT205,Information Technology,2
+Computer Architecture,IT206,Information Technology,2
+Operating Systems,IT301,Information Technology,3
+Data Communication,IT302,Information Technology,3
+Software Project Management,IT303,Information Technology,3
+Compiler Design,IT304,Information Technology,3
+Full Stack Development,IT305,Information Technology,3
+Internet of Things,IT306,Information Technology,3
+Deep Learning,IT401,Information Technology,4
+Blockchain Technology,IT402,Information Technology,4
+Cyber Security,IT403,Information Technology,4
+Natural Language Processing,IT404,Information Technology,4
+DevOps Engineering,IT405,Information Technology,4
+Industry Project,IT406,Information Technology,4

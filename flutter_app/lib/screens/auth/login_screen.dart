@@ -196,48 +196,48 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
 
                 // Dev hint
-                const SizedBox(height: 48),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurface
-                        .withOpacity(0.04),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withOpacity(0.08),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.info_outline_rounded,
-                        size: 16,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withOpacity(0.4),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'admin@college.edu / admin123',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withOpacity(0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
+                // const SizedBox(height: 48),
+                // Container(
+                //   padding: const EdgeInsets.all(14),
+                //   decoration: BoxDecoration(
+                //     color: Theme.of(context)
+                //         .colorScheme
+                //         .onSurface
+                //         .withOpacity(0.04),
+                //     borderRadius: BorderRadius.circular(12),
+                //     border: Border.all(
+                //       color: Theme.of(context)
+                //           .colorScheme
+                //           .onSurface
+                //           .withOpacity(0.08),
+                //     ),
+                //   ),
+                //   child: Row(
+                //     children: [
+                //       Icon(
+                //         Icons.info_outline_rounded,
+                //         size: 16,
+                //         color: Theme.of(context)
+                //             .colorScheme
+                //             .onSurface
+                //             .withOpacity(0.4),
+                //       ),
+                //       const SizedBox(width: 8),
+                //       Text(
+                //         'admin@college.edu / admin123',
+                //         style: TextStyle(
+                //           fontSize: 12,
+                //           fontFamily: 'monospace',
+                //           color: Theme.of(context)
+                //               .colorScheme
+                //               .onSurface
+                //               .withOpacity(0.5),
+                //         ),
+                //       ),
+                //     ],
+                //   ),
+                // ),
+                // const SizedBox(height: 24),
               ],
             ),
           ),

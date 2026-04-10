@@ -13,6 +13,7 @@ import 'admin_timetable_screen.dart';
 import 'admin_reports_screen.dart';
 import 'admin_enrollment_screen.dart';
 import 'admin_events_screen.dart';
+import 'admin_import_screen.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -197,6 +198,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 color: const Color(AppColors.hodColor),
                 onTap: () => Navigator.push(context, MaterialPageRoute(
                     builder: (_) => const AdminReportsScreen())),
+              ),
+              const SizedBox(height: 10),
+              ActionCard(
+                icon: Icons.cloud_upload_rounded,
+                title: 'Bulk Import Data',
+                subtitle: 'Import CSV records',
+                color: const Color(AppColors.primary),
+                onTap: () => Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => const AdminImportScreen())),
               ),
               const SizedBox(height: 10),
               ActionCard(

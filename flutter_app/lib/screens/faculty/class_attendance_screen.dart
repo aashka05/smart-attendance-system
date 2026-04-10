@@ -5,6 +5,7 @@ import '../../config.dart';
 import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../student/attendance_calendar_screen.dart';
+import 'session_attendees_screen.dart';
 
 class ClassAttendanceScreen extends StatefulWidget {
   final String slotId;
@@ -316,6 +317,7 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen>
                 builder: (_) => AttendanceCalendarScreen(
                   studentId: student['student_id'] ?? '',
                   studentName: student['full_name'] ?? '',
+                  subjectId: _classStats?['subject_id'],
                 ),
               ),
             ),
@@ -454,72 +456,87 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen>
           final presentCount =
               (session['present_count'] as num?)?.toInt() ?? 0;
           final sessionDate = session['session_date'] ?? '';
+          final sessionId = session['id'] ?? '';
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: AppCard(
-              child: Row(
-                children: [
-                  Container(
-                    width: 4,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: const Color(AppColors.success),
-                      borderRadius: BorderRadius.circular(2),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => SessionAttendeesScreen(
+                      sessionId: sessionId,
+                      sessionDate: sessionDate,
+                      subjectName: widget.subjectName,
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _formatSessionDate(sessionDate),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '$presentCount present',
-                          style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.5),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (isLive)
+                );
+              },
+              child: AppCard(
+                child: Row(
+                  children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
+                      width: 4,
+                      height: 56,
                       decoration: BoxDecoration(
-                        color: const Color(AppColors.success).withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(20),
+                        color: const Color(AppColors.success),
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.circle,
-                              color: Color(AppColors.success), size: 7),
-                          SizedBox(width: 5),
                           Text(
-                            'LIVE',
+                            _formatSessionDate(sessionDate),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$presentCount present',
                             style: TextStyle(
-                              color: Color(AppColors.success),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.5),
+                              fontSize: 12,
                             ),
                           ),
                         ],
                       ),
                     ),
-                ],
+                    if (isLive)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(AppColors.success).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.circle,
+                                color: Color(AppColors.success), size: 7),
+                            SizedBox(width: 5),
+                            Text(
+                              'LIVE',
+                              style: TextStyle(
+                                color: Color(AppColors.success),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           );

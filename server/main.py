@@ -34,6 +34,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+def home():
+    return {"message": "API is working"}
 
 # ─────────────────────────────────────────
 # DATABASE INIT
@@ -56,6 +59,7 @@ def init_db():
             name TEXT NOT NULL,
             code TEXT UNIQUE NOT NULL,
             department_id TEXT NOT NULL,
+            year INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT NOW(),
             FOREIGN KEY (department_id) REFERENCES departments(id)
         )
@@ -174,12 +178,14 @@ from face_routes import router as face_router
 from divisions_routes import router as divisions_router
 from events_routes import router as events_router
 from stats_routes import router as stats_router
+from import_routes import router as import_router
 
 app.include_router(ble_router)
 app.include_router(face_router)
 app.include_router(divisions_router)
 app.include_router(events_router)
 app.include_router(stats_router)
+app.include_router(import_router)
 
 
 # ─────────────────────────────────────────
@@ -217,6 +223,7 @@ class SubjectCreate(BaseModel):
     name: str
     code: str
     department_id: str
+    year: int
 
 
 class SlotCreate(BaseModel):
@@ -464,14 +471,27 @@ def delete_department(
 # SUBJECT ROUTES
 # ─────────────────────────────────────────
 @app.get("/subjects")
-def get_subjects(current_user: dict = Depends(get_current_user)):
+def get_subjects(
+    year: Optional[int] = None,
+    department_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+):
     conn = get_db()
-    subjects = conn.execute("""
+    query = """
         SELECT s.*, d.name as department_name
         FROM subjects s
         LEFT JOIN departments d ON s.department_id = d.id
-        ORDER BY s.name
-    """).fetchall()
+        WHERE 1=1
+    """
+    params = []
+    if year is not None:
+        query += " AND s.year = %s"
+        params.append(year)
+    if department_id is not None:
+        query += " AND s.department_id = %s"
+        params.append(department_id)
+    query += " ORDER BY s.year, s.name"
+    subjects = conn.execute(query, params if params else None).fetchall()
     conn.close()
     return [dict(s) for s in subjects]
 
@@ -485,10 +505,10 @@ def create_subject(
     try:
         conn.execute(
             """
-            INSERT INTO subjects (id, name, code, department_id)
-            VALUES (%s, %s, %s, %s)
+            INSERT INTO subjects (id, name, code, department_id, year)
+            VALUES (%s, %s, %s, %s, %s)
         """,
-            (subj_id, req.name, req.code, req.department_id),
+            (subj_id, req.name, req.code, req.department_id, req.year),
         )
         conn.commit()
     except psycopg2.errors.UniqueViolation:
