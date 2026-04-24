@@ -96,7 +96,10 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
 
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
+    user = conn.execute(
+        "SELECT u.*, d.name AS department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.id = %s",
+        (user_id,),
+    ).fetchone()
     conn.close()
     if user is None:
         raise credentials_exception

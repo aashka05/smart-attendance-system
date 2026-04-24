@@ -316,7 +316,8 @@ def register(req: RegisterRequest):
 def login(form_data: OAuth2PasswordRequestForm = Depends()):
     conn = get_db()
     user = conn.execute(
-        "SELECT * FROM users WHERE email = %s", (form_data.username,)
+        "SELECT u.*, d.name AS department_name FROM users u LEFT JOIN departments d ON u.department_id = d.id WHERE u.email = %s",
+        (form_data.username,),
     ).fetchone()
     conn.close()
 
