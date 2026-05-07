@@ -302,7 +302,7 @@ After the server and app are running:
 
 ---
 
-## Environment Variables
+<!-- ## Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
@@ -314,9 +314,9 @@ The JWT secret key is currently hardcoded in `database.py`. For production, chan
 SECRET_KEY = "your-secure-random-string-here"
 ```
 
----
+--- -->
 
-## Troubleshooting
+<!-- ## Troubleshooting
 
 | Problem | Solution |
 |---|---|
@@ -328,7 +328,7 @@ SECRET_KEY = "your-secure-random-string-here"
 | "Challenge expired" | Ensure server and phone clocks are roughly in sync |
 | App can't connect to server | Ensure phone and laptop are on the same Wi-Fi. Use laptop's local IP, not `localhost` |
 
----
+--- -->
 
 ## API Documentation
 
