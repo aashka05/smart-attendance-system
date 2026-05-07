@@ -10,6 +10,7 @@ import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
 import '../profile/profile_screen.dart';
+import '../reports/reports_menu_screen.dart';
 import 'class_attendance_screen.dart';
 
 class FacultyDashboard extends StatefulWidget {
@@ -332,6 +333,17 @@ class _FacultyDashboardState extends State<FacultyDashboard> {
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                 fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ActionCard(
+              icon: Icons.bar_chart_rounded,
+              title: 'Attendance Reports',
+              subtitle: 'Generate subject and class reports',
+              color: const Color(AppColors.hodColor),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ReportsMenuScreen(currentUser: user)),
               ),
             ),
             const SizedBox(height: 24),

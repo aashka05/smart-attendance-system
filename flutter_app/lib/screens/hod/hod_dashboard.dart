@@ -8,6 +8,7 @@ import '../../widgets/common_widgets.dart';
 import '../../config.dart';
 import '../profile/profile_screen.dart';
 import '../admin/admin_events_screen.dart';
+import '../reports/reports_menu_screen.dart';
 
 class HodDashboard extends StatefulWidget {
   const HodDashboard({super.key});
@@ -372,44 +373,65 @@ class _HodDashboardState extends State<HodDashboard>
   }
 
   Widget _buildReports() {
-    if (_reports.isEmpty) {
-      return const EmptyState(
-        icon: Icons.bar_chart_rounded,
-        title: 'No attendance records',
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _reports.length,
-      itemBuilder: (_, i) {
-        final r = _reports[i];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: AppCard(
-            child: Row(
-              children: [
-                const Icon(Icons.check_circle_rounded,
-                    color: Color(AppColors.success), size: 20),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(r['student_name'] ?? '',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      Text('${r['subject_name'] ?? 'N/A'} • ${r['marked_at'] ?? ''}',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                            fontSize: 11,
-                          )),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: ActionCard(
+            icon: Icons.bar_chart_rounded,
+            title: 'Generate Attendance Report',
+            subtitle: 'Create filtered reports for your department',
+            color: const Color(AppColors.hodColor),
+            onTap: () {
+              final currentUser = context.read<AuthProvider>().user!;
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ReportsMenuScreen(currentUser: currentUser)),
+              );
+            },
           ),
-        );
-      },
+        ),
+        Expanded(
+          child: _reports.isEmpty
+              ? const EmptyState(
+                  icon: Icons.bar_chart_rounded,
+                  title: 'No attendance records',
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _reports.length,
+                  itemBuilder: (_, i) {
+                    final r = _reports[i];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: AppCard(
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_rounded,
+                                color: Color(AppColors.success), size: 20),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(r['student_name'] ?? '',
+                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                  Text('${r['subject_name'] ?? 'N/A'} • ${r['marked_at'] ?? ''}',
+                                      style: TextStyle(
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                        fontSize: 11,
+                                      )),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }

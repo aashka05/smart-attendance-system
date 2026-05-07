@@ -179,6 +179,7 @@ from divisions_routes import router as divisions_router
 from events_routes import router as events_router
 from stats_routes import router as stats_router
 from import_routes import router as import_router
+from reports_routes import router as reports_router
 
 app.include_router(ble_router)
 app.include_router(face_router)
@@ -186,6 +187,7 @@ app.include_router(divisions_router)
 app.include_router(events_router)
 app.include_router(stats_router)
 app.include_router(import_router)
+app.include_router(reports_router)
 
 
 # ─────────────────────────────────────────

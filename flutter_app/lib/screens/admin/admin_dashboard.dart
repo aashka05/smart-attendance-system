@@ -10,7 +10,7 @@ import '../profile/profile_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_departments_screen.dart';
 import 'admin_timetable_screen.dart';
-import 'admin_reports_screen.dart';
+import '../reports/reports_menu_screen.dart';
 import 'admin_enrollment_screen.dart';
 import 'admin_events_screen.dart';
 import 'admin_import_screen.dart';
@@ -194,10 +194,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
               ActionCard(
                 icon: Icons.bar_chart_rounded,
                 title: 'Attendance Reports',
-                subtitle: 'View all attendance data',
+                subtitle: 'Generate role-based attendance reports',
                 color: const Color(AppColors.hodColor),
                 onTap: () => Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => const AdminReportsScreen())),
+                    builder: (_) => ReportsMenuScreen(currentUser: user))),
               ),
               const SizedBox(height: 10),
               ActionCard(

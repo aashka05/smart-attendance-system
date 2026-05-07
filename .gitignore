@@ -44,3 +44,7 @@ flutter_app/ios/Runner/GeneratedPluginRegistrant.*
 .vscode/
 .idea/
 *.iml
+
+# md files
+*.md
+!README.md

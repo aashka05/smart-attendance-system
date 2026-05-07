@@ -8,6 +8,7 @@ import '../../services/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../widgets/common_widgets.dart';
 import '../../config.dart';
+import '../reports/reports_menu_screen.dart';
 import 'attendance_calendar_screen.dart';
 import 'face_enrollment_screen.dart';
 import 'face_scan_screen.dart';
@@ -486,6 +487,17 @@ class _StudentDashboardState extends State<StudentDashboard> {
                     studentName: user.fullName,
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            ActionCard(
+              icon: Icons.bar_chart_rounded,
+              title: 'Attendance Reports',
+              subtitle: 'Generate your personal attendance report',
+              color: const Color(AppColors.hodColor),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ReportsMenuScreen(currentUser: user)),
               ),
             ),
             const SizedBox(height: 14),

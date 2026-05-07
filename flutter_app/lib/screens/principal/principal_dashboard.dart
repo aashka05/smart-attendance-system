@@ -8,6 +8,7 @@ import '../../widgets/common_widgets.dart';
 import '../../config.dart';
 import '../profile/profile_screen.dart';
 import '../admin/admin_events_screen.dart';
+import '../reports/reports_menu_screen.dart';
 
 class PrincipalDashboard extends StatefulWidget {
   const PrincipalDashboard({super.key});
@@ -161,6 +162,17 @@ class _PrincipalDashboardState extends State<PrincipalDashboard> {
                       color: const Color(AppColors.holiday),
                       onTap: () => Navigator.push(context, MaterialPageRoute(
                           builder: (_) => const AdminEventsScreen())),
+                    ),
+                    const SizedBox(height: 14),
+                    ActionCard(
+                      icon: Icons.bar_chart_rounded,
+                      title: 'Attendance Reports',
+                      subtitle: 'Generate full college attendance reports',
+                      color: const Color(AppColors.hodColor),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => ReportsMenuScreen(currentUser: user)),
+                      ),
                     ),
                     const SizedBox(height: 14),
 
