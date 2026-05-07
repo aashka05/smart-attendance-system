@@ -13,6 +13,8 @@ A face recognition + BLE-based attendance system built with Flutter and FastAPI.
 - **Real-time attendance tracking** — Calendar view, subject-wise stats
 - **Department & subject management**
 - **Event & lecture cancellation management**
+- **Role-based report generation** — Generate PDF reports with flexible filtering (department, year, subject, date range)
+- **Attendance analytics** — View personal and department-level attendance statistics
 
 ## Tech Stack
 
@@ -39,6 +41,9 @@ smart-attendance-system/
 │   ├── stats_routes.py       ← Attendance stats & calendar
 │   ├── events_routes.py      ← College events (holidays, exams, etc.)
 │   ├── divisions_routes.py   ← Division management
+│   ├── reports_routes.py     ← Report generation API endpoints
+│   ├── report_generator.py   ← PDF generation utility
+│   ├── import_routes.py      ← CSV import for bulk data
 │   ├── init.sql              ← Full PostgreSQL schema + seed data
 │   └── requirements.txt
 └── flutter_app/
@@ -49,6 +54,7 @@ smart-attendance-system/
     │   ├── services/
     │   │   ├── api_service.dart
     │   │   ├── auth_provider.dart
+    │   │   ├── report_service.dart  ← Report API client
     │   │   └── theme_provider.dart
     │   ├── widgets/
     │   │   └── common_widgets.dart
@@ -59,6 +65,7 @@ smart-attendance-system/
     │       ├── student/       ← BLE scan, face scan, enrollment, calendar
     │       ├── hod/           ← Department management
     │       ├── principal/     ← Overview & reports
+    │       ├── reports/       ← Report generation & viewing
     │       └── profile/       ← User profile
     └── pubspec.yaml
 ```
@@ -353,9 +360,9 @@ http://localhost:8000/docs
 - [x] Attendance calendar & stats
 - [x] Event management (holidays, exams, fests)
 - [x] Lecture cancellation
-- [ ] Push notifications (FCM)
-- [ ] Export reports (PDF/Excel)
-- [ ] Attendance percentage alerts
+- [x] Export reports (PDF)
+- [x] Bulk data import (CSV)
+- [ ] Attendance percentage alerts and notifications
 
 ---
 
