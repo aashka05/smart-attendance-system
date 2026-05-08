@@ -495,6 +495,18 @@ class ApiService {
     return _handleResponse(response);
   }
 
+  Future<Map<String, dynamic>> updateSessionAttendance(
+    String sessionId,
+    List<Map<String, String>> records,
+  ) async {
+    final response = await http.post(
+      Uri.parse('${AppConfig.baseUrl}/attendance/session/$sessionId/records'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'records': records}),
+    );
+    return _handleResponse(response);
+  }
+
   // ─────────────────────────────────────────
   // EVENTS
   // ─────────────────────────────────────────

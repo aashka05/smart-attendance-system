@@ -505,10 +505,10 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
                       const SizedBox(height: 3),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: dots.take(4).map((color) {
+                        children: dots.take(5).map((color) {
                           return Container(
-                            width: 6,
-                            height: 6,
+                            width: 5,
+                            height: 5,
                             margin: const EdgeInsets.symmetric(horizontal: 1),
                             decoration: BoxDecoration(
                               color: color,

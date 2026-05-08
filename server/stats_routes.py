@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Optional
 from datetime import datetime, date
 import json
+import uuid
 from database import get_db, get_current_user, require_role
 
 router = APIRouter()
@@ -318,20 +319,181 @@ def get_session_attendees(
             conn.close()
             raise HTTPException(status_code=403, detail="Access denied")
 
-    # Get attendees
-    attendees = conn.execute(
-        """
-        SELECT ar.student_id, u.full_name, u.enrollment_number
-        FROM attendance_records ar
-        LEFT JOIN users u ON ar.student_id = u.id
-        WHERE ar.session_id = %s AND ar.status = 'present'
-        ORDER BY u.full_name ASC
-    """,
-        (session_id,),
-    ).fetchall()
+    slot = conn.execute(
+        "SELECT * FROM timetable_slots WHERE id = %s",
+        (session["slot_id"],),
+    ).fetchone()
+
+    if not slot:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    slot = dict(slot)
+
+    if slot["lecture_type"] in ["open_elective", "program_elective"]:
+        students = conn.execute(
+            """
+            SELECT u.id, u.full_name, u.enrollment_number
+            FROM users u
+            INNER JOIN elective_enrollments ee ON u.id = ee.student_id
+            WHERE ee.slot_id = %s AND ee.status = 'enrolled'
+            ORDER BY u.full_name ASC
+        """,
+            (slot["id"],),
+        ).fetchall()
+    else:
+        batch_filter = ""
+        params = [slot["department_id"], slot["year"]]
+        if slot.get("batch") and slot["lecture_type"] == "practical":
+            batch_filter = "AND u.practical_batch = %s"
+            params.append(slot["batch"])
+        elif slot.get("batch") and slot["lecture_type"] == "tutorial":
+            batch_filter = "AND u.tutorial_batch = %s"
+            params.append(slot["batch"])
+
+        students = conn.execute(
+            f"""
+            SELECT u.id, u.full_name, u.enrollment_number
+            FROM users u
+            WHERE u.department_id = %s
+            AND u.year = %s
+            AND u.role = 'student'
+            AND u.status = 'approved'
+            {batch_filter}
+            ORDER BY u.full_name ASC
+        """,
+            params,
+        ).fetchall()
+
+    attendees = []
+    for student in students:
+        student = dict(student)
+        record = conn.execute(
+            "SELECT status FROM attendance_records WHERE session_id = %s AND student_id = %s",
+            (session_id, student["id"]),
+        ).fetchone()
+        attendees.append(
+            {
+                "student_id": student["id"],
+                "full_name": student["full_name"],
+                "enrollment_number": student["enrollment_number"],
+                "status": record["status"] if record else "absent",
+            }
+        )
 
     conn.close()
-    return [dict(a) for a in attendees]
+    return attendees
+
+
+@router.post("/attendance/session/{session_id}/records")
+def update_session_attendance(
+    session_id: str,
+    payload: dict,
+    current_user: dict = Depends(require_role("faculty", "admin", "hod")),
+):
+    """Update attendance records for a session."""
+    records = payload.get("records")
+    if not isinstance(records, list):
+        raise HTTPException(status_code=400, detail="Invalid records payload")
+
+    conn = get_db()
+
+    session = conn.execute(
+        "SELECT * FROM attendance_sessions WHERE id = %s",
+        (session_id,),
+    ).fetchone()
+    if not session:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = dict(session)
+
+    if current_user["role"] == "faculty":
+        slot = conn.execute(
+            "SELECT faculty_id FROM timetable_slots WHERE id = %s",
+            (session["slot_id"],),
+        ).fetchone()
+        if not slot or slot["faculty_id"] != current_user["id"]:
+            conn.close()
+            raise HTTPException(status_code=403, detail="Access denied")
+
+    slot = conn.execute(
+        "SELECT * FROM timetable_slots WHERE id = %s",
+        (session["slot_id"],),
+    ).fetchone()
+    if not slot:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Slot not found")
+
+    slot = dict(slot)
+    valid_student_ids = set()
+    if slot["lecture_type"] in ["open_elective", "program_elective"]:
+        enrollments = conn.execute(
+            "SELECT student_id FROM elective_enrollments WHERE slot_id = %s AND status = 'enrolled'",
+            (slot["id"],),
+        ).fetchall()
+        valid_student_ids = {row["student_id"] for row in enrollments}
+    else:
+        batch_filter = ""
+        params = [slot["department_id"], slot["year"]]
+        if slot.get("batch") and slot["lecture_type"] == "practical":
+            batch_filter = "AND u.practical_batch = %s"
+            params.append(slot["batch"])
+        elif slot.get("batch") and slot["lecture_type"] == "tutorial":
+            batch_filter = "AND u.tutorial_batch = %s"
+            params.append(slot["batch"])
+
+        students = conn.execute(
+            f"""
+            SELECT u.id
+            FROM users u
+            WHERE u.department_id = %s
+            AND u.year = %s
+            AND u.role = 'student'
+            AND u.status = 'approved'
+            {batch_filter}
+        """,
+            params,
+        ).fetchall()
+        valid_student_ids = {row["id"] for row in students}
+
+    now = datetime.utcnow().isoformat()
+    seen_ids = set()
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        student_id = record.get("student_id")
+        status = record.get("status")
+        if student_id in seen_ids:
+            continue
+        seen_ids.add(student_id)
+
+        if student_id not in valid_student_ids:
+            conn.close()
+            raise HTTPException(status_code=400, detail=f"Student {student_id} is not enrolled in this slot")
+
+        if status not in ["present", "absent"]:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Status must be present or absent")
+
+        existing = conn.execute(
+            "SELECT id FROM attendance_records WHERE session_id = %s AND student_id = %s",
+            (session_id, student_id),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE attendance_records SET status = %s, marked_at = %s WHERE session_id = %s AND student_id = %s",
+                (status, now, session_id, student_id),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO attendance_records (id, session_id, student_id, status, marked_at) VALUES (%s, %s, %s, %s, %s)",
+                (str(uuid.uuid4()), session_id, student_id, status, now),
+            )
+
+    conn.commit()
+    conn.close()
+    return {"message": "Attendance records updated successfully"}
 
 
 # ─────────────────────────────────────────
