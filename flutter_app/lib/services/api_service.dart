@@ -275,6 +275,14 @@ class ApiService {
     return _handleResponse(response);
   }
 
+  Future<Map<String, dynamic>> deleteSession(String sessionId) async {
+    final response = await http.delete(
+      Uri.parse('${AppConfig.baseUrl}/attendance/session/$sessionId'),
+      headers: await _authHeaders(),
+    );
+    return _handleResponse(response);
+  }
+
   Future<Map<String, dynamic>> reportBleDetected({
     required String token,
     required int rssi,

@@ -104,6 +104,53 @@ def stop_attendance(
     return {"message": "Attendance session closed"}
 
 
+@router.delete("/attendance/session/{session_id}")
+def delete_session(
+    session_id: str, current_user: dict = Depends(require_role("faculty"))
+):
+    conn = get_db()
+    cursor = conn.cursor()
+
+    try:
+        # Check if session exists and belongs to this faculty
+        cursor.execute(
+            "SELECT id FROM attendance_sessions WHERE id = %s AND faculty_id = %s",
+            (session_id, current_user["id"]),
+        )
+        session = cursor.fetchone()
+
+        if not session:
+            conn.close()
+            raise HTTPException(
+                status_code=403, detail="Session not found or not assigned to you"
+            )
+
+        # 1. Delete liveness challenges
+        cursor.execute(
+            "DELETE FROM liveness_challenges WHERE session_id = %s", (session_id,)
+        )
+
+        # 2. Delete BLE events
+        cursor.execute("DELETE FROM ble_events WHERE session_id = %s", (session_id,))
+
+        # 3. Delete attendance records
+        cursor.execute(
+            "DELETE FROM attendance_records WHERE session_id = %s", (session_id,)
+        )
+
+        # 4. Delete session itself
+        cursor.execute("DELETE FROM attendance_sessions WHERE id = %s", (session_id,))
+
+        conn.commit()
+        return {"message": "Session and all related records deleted successfully"}
+
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete session: {str(e)}")
+    finally:
+        conn.close()
+
+
 @router.get("/attendance/live")
 def get_live_sessions(current_user: dict = Depends(get_current_user)):
     conn = get_db()

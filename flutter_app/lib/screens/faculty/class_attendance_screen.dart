@@ -92,6 +92,43 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen>
     }
   }
 
+  Future<void> _deleteSession(String sessionId) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Session'),
+        content: const Text(
+          'Are you sure you want to delete this session? This will permanently remove all attendance records and related data for this session. This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(AppColors.error),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _api.deleteSession(sessionId);
+      _showSnack('Session deleted successfully');
+      _loadClassCalendar(); // Refresh UI
+      _loadClassStats();    // Refresh student percentages
+    } catch (e) {
+      _showSnack(e.toString(), isError: true);
+    }
+  }
+
   void _showSnack(String msg, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -460,7 +497,7 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen>
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: GestureDetector(
+            child: AppCard(
               onTap: () {
                 Navigator.push(
                   context,
@@ -473,70 +510,76 @@ class _ClassAttendanceScreenState extends State<ClassAttendanceScreen>
                   ),
                 );
               },
-              child: AppCard(
-                child: Row(
-                  children: [
-                    Container(
-                      width: 4,
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: const Color(AppColors.success),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(AppColors.success),
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _formatSessionDate(sessionDate),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _formatSessionDate(sessionDate),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
                           ),
-                          const SizedBox(height: 4),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$presentCount present',
+                          style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.5),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (isLive)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(AppColors.success).withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.circle,
+                              color: Color(AppColors.success), size: 7),
+                          SizedBox(width: 5),
                           Text(
-                            '$presentCount present',
+                            'LIVE',
                             style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withOpacity(0.5),
-                              fontSize: 12,
+                              color: Color(AppColors.success),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
                       ),
                     ),
-                    if (isLive)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(AppColors.success).withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.circle,
-                                color: Color(AppColors.success), size: 7),
-                            SizedBox(width: 5),
-                            Text(
-                              'LIVE',
-                              style: TextStyle(
-                                color: Color(AppColors.success),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+                  IconButton(
+                    icon: Icon(
+                      Icons.delete_outline_rounded,
+                      color: Theme.of(context).colorScheme.error.withOpacity(0.7),
+                      size: 20,
+                    ),
+                    onPressed: () => _deleteSession(sessionId),
+                  ),
+                ],
               ),
             ),
           );

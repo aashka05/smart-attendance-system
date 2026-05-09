@@ -55,6 +55,9 @@ class DBConnection:
     def commit(self):
         self._conn.commit()
 
+    def rollback(self):
+        self._conn.rollback()
+
     def cursor(self):
         return self._conn.cursor(cursor_factory=extras.RealDictCursor)
 
